@@ -40,9 +40,8 @@ The ward is a **2D grid** representing a simplified hospital ward floor plan.
 
 ### Grid Dimensions
 
-- Recommended: **20 × 15 cells** (adjustable in config)
-- **~25 beds** arranged in a realistic ward pattern (rows of beds along corridors)
-- 2–3 nurse stations (centrally located for fast response)
+- 4 wards with 8 beds each arranged in a realistic ward pattern (rows of beds along corridors)
+- 2–4 nurse stations (centrally located for fast response)
 - 3–4 charging bays (along edges, out of main corridors)
 - 1–2 entrances
 
