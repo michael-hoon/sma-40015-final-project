@@ -41,6 +41,7 @@ The ward is a **2D grid** representing a simplified hospital ward floor plan.
 ### Grid Dimensions
 
 - 4 wards with 8 beds each arranged in a realistic ward pattern (rows of beds along corridors)
+- wards are arranged in a H shape configuration where entrances are in the middle
 - 2–4 nurse stations (centrally located for fast response)
 - 3–4 charging bays (along edges, out of main corridors)
 - 1–2 entrances
