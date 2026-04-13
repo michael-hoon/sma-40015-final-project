@@ -1,4 +1,4 @@
-# CLAUDE.md — CGH Hospital Robot ABM Simulation
+# CGH Hospital Robot ABM Simulation
 
 ## Project Overview
 
@@ -40,8 +40,9 @@ This is an undergraduate course project for "Simulation Modelling and Analysis".
 ## Project Structure
 
 ```
-cgh-abm/
+sma-40015-final-project/
 ├── CLAUDE.md                  # This file — project rules for Claude Code
+├── README.md                  # Details about the project
 ├── index.html                 # Single-page app entry point
 ├── docs/
 │   └── SIMULATION_SPEC.md     # Full simulation specification (READ FIRST)
