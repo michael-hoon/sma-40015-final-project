@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CGH Hospital Robot ABM</title>
+
+  <!--
+    Fonts: Rajdhani (instrument labels) · DM Sans (body) · Fira Code (readouts)
+    These three are chosen to evoke a professional medical-monitoring aesthetic.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- CDN libraries — no build step -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+
+  <style>
+    /* ─────────────────────────────────────────────────────────────────────
+       Design tokens — clinical dark theme
+       ───────────────────────────────────────────────────────────────────── */
+    :root {
+      --void:        #020810;
+      --base:        #060d1a;
+      --surface:     #091220;
+      --raised:      #0d1a2e;
+      --hover:       #122035;
+      --b-faint:     #0f1e30;
+      --b-sub:       #182c42;
+      --b-norm:      #1e3550;
+      --b-active:    #0077b6;
+      --text-hi:     #cde0f5;
+      --text-mid:    #4e7098;
+      --text-lo:     #213850;
+      --accent:      #00a8d0;
+      --accent-glow: rgba(0,168,208,0.18);
+      --accent-dim:  rgba(0,168,208,0.09);
+      --green:       #00d97e;
+      --green-dim:   rgba(0,217,126,0.09);
+      --amber:       #ffb300;
+      --amber-dim:   rgba(255,179,0,0.09);
+      --red:         #ff4444;
+      --red-dim:     rgba(255,68,68,0.09);
+      --blue:        #2196f3;
+      --orange:      #ff9800;
+      --purple:      #ab6fff;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Reset & base
+       ───────────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      font-family: 'DM Sans', system-ui, sans-serif;
+      font-size: 13px;
+      color: var(--text-hi);
+      background: var(--base);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::-webkit-scrollbar            { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track      { background: var(--void); }
+    ::-webkit-scrollbar-thumb      { background: var(--b-norm); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb:hover{ background: var(--b-active); }
+
+    /* Prevent Alpine FOUC */
+    [x-cloak] { display: none !important; }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       App shell
+       ───────────────────────────────────────────────────────────────────── */
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background:
+        radial-gradient(ellipse 1100px 500px at 50% 58%,
+          rgba(0,80,140,0.07) 0%, transparent 70%),
+        var(--base);
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Header
+       ───────────────────────────────────────────────────────────────────── */
+    .hdr {
+      flex-shrink: 0;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 18px;
+      background: var(--void);
+      border-bottom: 1px solid var(--b-faint);
+      gap: 16px;
+    }
+    .hdr-brand {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+    .hdr-name {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    .hdr-sep {
+      width: 1px;
+      height: 14px;
+      background: var(--b-norm);
+      align-self: center;
+    }
+    .hdr-sub {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-mid);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .hdr-right {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-lo);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Three-column grid
+       ───────────────────────────────────────────────────────────────────── */
+    .cols {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 272px 640px 1fr;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Control panel — left column
+       ───────────────────────────────────────────────────────────────────── */
+    .ctrl {
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border-right: 1px solid var(--b-faint);
+      /* Subtle blueprint grid */
+      background-image:
+        linear-gradient(var(--b-faint) 1px, transparent 1px),
+        linear-gradient(90deg, var(--b-faint) 1px, transparent 1px);
+      background-size: 24px 24px;
+      background-attachment: local;
+    }
+
+    .ctrl-sec {
+      padding: 13px 15px;
+      border-bottom: 1px solid var(--b-faint);
+      background: var(--surface); /* covers the grid texture in each section */
+    }
+
+    .sec-lbl {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--text-lo);
+      margin-bottom: 11px;
+    }
+    .sec-lbl::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--b-faint);
+    }
+
+    /* ── Tick / status ─────────────────────────────────────────────── */
+    .tick-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 7px;
+    }
+    .tick-num {
+      font-family: 'Fira Code', monospace;
+      font-size: 36px;
+      font-weight: 500;
+      color: var(--accent);
+      line-height: 1;
+      letter-spacing: -0.01em;
+      transition: color 0.3s;
+    }
+    .tick-num.idle { color: var(--text-mid); }
+    .tick-denom {
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--text-lo);
+      margin-top: 4px;
+      line-height: 1.3;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      border: 1px solid var(--b-norm);
+      color: var(--text-mid);
+    }
+    .status-pill.live     { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .status-pill.done     { border-color: var(--green);  color: var(--green);  background: var(--green-dim); }
+    .status-pill.init     { border-color: var(--b-sub);  color: var(--text-lo); }
+    .s-dot {
+      width: 5px; height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .status-pill.live .s-dot { animation: blink 1.2s ease-in-out infinite; }
+
+    .prog-track {
+      height: 2px;
+      background: var(--b-sub);
+      border-radius: 1px;
+      overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), rgba(0,168,208,0.4));
+      border-radius: 1px;
+      transition: width 0.22s linear;
+    }
+
+    /* ── Transport buttons ─────────────────────────────────────────── */
+    .btn-play {
+      width: 100%;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      border-radius: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      border: 1px solid var(--b-active);
+      background: var(--accent-dim);
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .btn-play:not(:disabled):hover {
+      background: rgba(0,168,208,0.18);
+      box-shadow: 0 0 18px rgba(0,168,208,0.22);
+    }
+    .btn-play.is-live  { animation: glow-pulse 2.4s ease-in-out infinite; }
+    .btn-play:disabled { opacity: 0.32; cursor: not-allowed; }
+
+    .btn-2col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 7px;
+    }
+    .btn-sm {
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border-radius: 5px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s, color 0.12s;
+      border: 1px solid var(--b-norm);
+      background: transparent;
+      color: var(--text-mid);
+    }
+    .btn-sm:not(:disabled):hover {
+      background: var(--hover);
+      border-color: var(--b-active);
+      color: var(--text-hi);
+    }
+    .btn-sm:disabled { opacity: 0.32; cursor: not-allowed; }
+
+    /* ── Scenario segment control ──────────────────────────────────── */
+    .seg {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3px;
+      padding: 3px;
+      background: var(--void);
+      border: 1px solid var(--b-sub);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .seg-btn {
+      padding: 7px 4px;
+      border-radius: 4px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.07em;
+      text-transform: uppercase;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 1px solid transparent;
+      color: var(--text-mid);
+      background: transparent;
+    }
+    .seg-btn.on  { background: var(--accent-dim); border-color: var(--b-active); color: var(--accent); }
+    .seg-btn:not(.on):hover { background: var(--hover); color: var(--text-hi); }
+
+    .scenario-hint {
+      font-size: 11px;
+      color: var(--text-lo);
+      line-height: 1.55;
+      min-height: 34px;
+    }
+
+    /* ── Form rows ─────────────────────────────────────────────────── */
+    .f-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 11px;
+    }
+    .f-lbl {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+    .f-lbl-hint { font-size: 10px; color: var(--text-lo); text-transform: none; letter-spacing: 0; font-weight: 400; }
+    .f-val {
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-hi);
+    }
+    .f-val.accent { color: var(--accent); }
+
+    .slider-wrap { margin-bottom: 13px; }
+    input[type="range"].slider {
+      -webkit-appearance: none;
+      appearance: none;
+      display: block;
+      width: 100%;
+      height: 3px;
+      background: var(--b-norm);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      margin-top: 5px;
+    }
+    input[type="range"].slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 13px; height: 13px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      box-shadow: 0 0 0 2px var(--surface), 0 0 7px var(--accent-glow);
+      transition: box-shadow 0.12s;
+    }
+    input[type="range"].slider::-webkit-slider-thumb:hover {
+      box-shadow: 0 0 0 2px var(--surface), 0 0 14px rgba(0,168,208,0.5);
+    }
+    /* Per-agent thumb colours */
+    input[type="range"].slider.c-green::-webkit-slider-thumb   { background: var(--green); }
+    input[type="range"].slider.c-blue::-webkit-slider-thumb    { background: var(--blue); }
+    input[type="range"].slider.c-orange::-webkit-slider-thumb  { background: var(--orange); }
+    input[type="range"].slider.c-purple::-webkit-slider-thumb  { background: var(--purple); }
+
+    .slider-ends {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 3px;
+      font-size: 9px;
+      color: var(--text-lo);
+      letter-spacing: 0.05em;
+    }
+
+    .seed-input {
+      width: 76px;
+      background: var(--void);
+      border: 1px solid var(--b-norm);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--text-hi);
+      text-align: right;
+      outline: none;
+      transition: border-color 0.12s;
+    }
+    .seed-input:focus { border-color: var(--b-active); }
+
+    /* Colour swatch dot */
+    .swatch {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Canvas section — center column
+       ───────────────────────────────────────────────────────────────────── */
+    .canvas-col {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--base);
+    }
+
+    .canvas-shell {
+      position: relative;
+      border: 1px solid var(--b-sub);
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px var(--b-faint),
+        0 8px 40px rgba(0,0,0,0.55),
+        0 0 80px rgba(0,0,0,0.3);
+    }
+
+    /* Tick counter overlaid on top-left of canvas */
+    .canvas-hud {
+      position: absolute;
+      top: 8px; left: 9px;
+      background: rgba(2,8,16,0.82);
+      border: 1px solid var(--b-sub);
+      border-radius: 3px;
+      padding: 2px 8px;
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      pointer-events: none;
+      backdrop-filter: blur(3px);
+    }
+
+    /* Progress bar at canvas bottom edge */
+    .canvas-prog {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--b-faint);
+    }
+    .canvas-prog-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.25s linear;
+    }
+
+    /* Loading state */
+    .canvas-loading {
+      width: 640px;
+      height: 480px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      background: var(--surface);
+      border: 1px solid var(--b-sub);
+      border-radius: 4px;
+    }
+    .loading-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+    .loading-dots { display: flex; gap: 7px; }
+    .ld {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--b-norm);
+      animation: ldpulse 1.5s ease-in-out infinite;
+    }
+    .ld:nth-child(2) { animation-delay: 0.22s; }
+    .ld:nth-child(3) { animation-delay: 0.44s; }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Charts panel — right column
+       ───────────────────────────────────────────────────────────────────── */
+    .charts-col {
+      overflow-y: auto;
+      overflow-x: hidden;
+      background: var(--surface);
+      border-left: 1px solid var(--b-faint);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .ch-sec {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--b-faint);
+      flex-shrink: 0;
+    }
+
+    /* ── KPI cards ─────────────────────────────────────────────────── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .kpi-card {
+      background: var(--raised);
+      border: 1px solid var(--b-faint);
+      border-radius: 5px;
+      padding: 9px 11px;
+    }
+    .kpi-val {
+      font-family: 'Fira Code', monospace;
+      font-size: 22px;
+      font-weight: 500;
+      line-height: 1.1;
+    }
+    .kpi-val.good   { color: var(--green); }
+    .kpi-val.warn   { color: var(--amber); }
+    .kpi-val.crit   { color: var(--red); }
+    .kpi-val.accent { color: var(--accent); }
+    .kpi-val.dim    { color: var(--text-lo); }
+    .kpi-lbl {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-lo);
+      margin-top: 3px;
+    }
+
+    /* ── Active needs strip ────────────────────────────────────────── */
+    .needs-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 5px;
+    }
+    .need-chip {
+      background: var(--raised);
+      border: 1px solid var(--b-faint);
+      border-radius: 4px;
+      padding: 5px 4px;
+      text-align: center;
+    }
+    .need-n {
+      font-family: 'Fira Code', monospace;
+      font-size: 17px;
+      font-weight: 500;
+      line-height: 1.2;
+    }
+    .need-t {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-lo);
+    }
+
+    /* ── Legend ────────────────────────────────────────────────────── */
+    .legend-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+      color: var(--text-mid);
+    }
+    .l-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .legend-note {
+      grid-column: 1 / -1;
+      font-size: 10px;
+      color: var(--text-lo);
+      line-height: 1.55;
+      margin-top: 4px;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Experiment button
+       ───────────────────────────────────────────────────────────────────── */
+    .btn-exp {
+      width: 100%;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 5px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      border: 1px solid var(--b-norm);
+      background: transparent;
+      color: var(--text-mid);
+    }
+    .btn-exp:not(:disabled):hover {
+      background: var(--green-dim);
+      border-color: var(--green);
+      color: var(--green);
+    }
+    .btn-exp:disabled { opacity: 0.32; cursor: not-allowed; }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Experiment modal
+       ───────────────────────────────────────────────────────────────────── */
+    .exp-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: rgba(2,8,16,0.88);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .exp-dialog {
+      width: min(860px, 96vw);
+      max-height: 90vh;
+      background: var(--surface);
+      border: 1px solid var(--b-norm);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px var(--b-faint);
+      overflow: hidden;
+    }
+
+    .exp-header {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--b-faint);
+      background: var(--void);
+    }
+    .exp-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-hi);
+    }
+    .exp-close {
+      width: 26px; height: 26px;
+      border: 1px solid var(--b-norm);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--text-mid);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      transition: background 0.12s, color 0.12s;
+    }
+    .exp-close:hover { background: var(--hover); color: var(--text-hi); }
+
+    .exp-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+    }
+
+    /* Progress area */
+    .exp-prog-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 18px;
+      padding: 32px 0;
+    }
+    .exp-prog-label {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+    }
+    .exp-prog-status {
+      font-family: 'Fira Code', monospace;
+      font-size: 12px;
+      color: var(--accent);
+      min-height: 18px;
+    }
+    .exp-prog-track {
+      width: 100%;
+      max-width: 480px;
+      height: 4px;
+      background: var(--b-sub);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .exp-prog-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--green));
+      border-radius: 2px;
+      transition: width 0.2s linear;
+    }
+    .exp-prog-frac {
+      font-family: 'Fira Code', monospace;
+      font-size: 24px;
+      font-weight: 500;
+      color: var(--accent);
+    }
+
+    /* Results table */
+    .exp-table-wrap {
+      overflow-x: auto;
+    }
+    .exp-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11.5px;
+    }
+    .exp-table th {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 9.5px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text-lo);
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--b-faint);
+      text-align: right;
+      white-space: nowrap;
+    }
+    .exp-table th:first-child { text-align: left; }
+    .exp-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid var(--b-faint);
+      text-align: right;
+      color: var(--text-mid);
+      font-family: 'Fira Code', monospace;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .exp-table td:first-child {
+      text-align: left;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 12px;
+      color: var(--text-hi);
+    }
+    .exp-table tr:last-child td { border-bottom: none; }
+    .exp-table tr:hover td { background: var(--raised); }
+
+    .exp-table .sig-yes { color: var(--green); }
+    .exp-table .sig-no  { color: var(--text-lo); }
+    .exp-table .stars   { color: var(--amber); font-family: 'DM Sans', sans-serif; }
+
+    /* Scenario column headers */
+    .exp-table .col-a { color: var(--accent); }
+    .exp-table .col-b { color: var(--green); }
+
+    .exp-table-note {
+      margin-top: 10px;
+      font-size: 10px;
+      color: var(--text-lo);
+      line-height: 1.6;
+    }
+
+    /* Footer */
+    .exp-footer {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 18px;
+      border-top: 1px solid var(--b-faint);
+      background: var(--void);
+    }
+    .btn-csv {
+      height: 34px;
+      padding: 0 16px;
+      border-radius: 4px;
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border: 1px solid var(--green);
+      background: var(--green-dim);
+      color: var(--green);
+      transition: background 0.12s;
+    }
+    .btn-csv:hover { background: rgba(0,217,126,0.18); }
+
+    /* ─────────────────────────────────────────────────────────────────────
+       Animations
+       ───────────────────────────────────────────────────────────────────── */
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.2; }
+    }
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0  6px rgba(0,168,208,0.18); }
+      50%       { box-shadow: 0 0 22px rgba(0,168,208,0.48); }
+    }
+    @keyframes ldpulse {
+      0%, 80%, 100% { background: var(--b-norm); transform: scale(1); }
+      40%            { background: var(--accent);  transform: scale(1.3); }
+    }
+  </style>
+
+  <!--
+    Alpine.js component factory — MUST be a synchronous <script> so it is
+    defined before Alpine's deferred initialisation fires.
+    The heavy lifting (Renderer + ScenarioManager) is loaded dynamically
+    from src/ui/ControlPanel.js inside the async init() method.
+  -->
+  <script>
+    function simControl() {
+      return {
+        /* ── Reactive state ─────────────────────────────────────────── */
+        rendererReady:     false,
+        isRunning:         false,
+        currentTick:       0,
+        totalTicks:        960,
+
+        /* Scenario parameters */
+        scenario:          'A',
+        seed:              1,
+        nurseCount:        4,
+        mediCount:         2,
+        blankiCount:       2,
+        ediCount:          2,
+        tickDurationMs:    200,
+
+        /* Live KPIs */
+        criticalIncidents: 0,
+        nurseUtil:         0,
+        robotUtil:         0,
+        avgHealth:         100,
+        lowestHealth:      100,
+        activeNeeds:       { emergency: 0, medication: 0, comfort: 0, visitor_escort: 0 },
+
+        /* Experiment state */
+        expOpen:     false,
+        expRunning:  false,
+        expDone:     false,
+        expProgress: 0,
+        expTotal:    60,
+        expStatus:   '',
+        expResults:  null,
+        _expRawA:    null,
+        _expRawB:    null,
+
+        /* ── Lifecycle ──────────────────────────────────────────────── */
+        async init() {
+          const { initControlPanel } = await import('./src/ui/ControlPanel.js');
+          await initControlPanel(this);
+        },
+
+        /* ── Playback actions ───────────────────────────────────────── */
+        doPlay()  { if (this.rendererReady) { window.simRenderer?.resume(); this.isRunning = true; } },
+        doPause() { window.simRenderer?.pause();  this.isRunning = false; },
+        doStep()  { if (this.rendererReady && !this.isRunning) window.simRenderer?.step(); },
+
+        doReset() {
+          this.isRunning         = false;
+          this.currentTick       = 0;
+          this.criticalIncidents = 0;
+          this.nurseUtil         = 0;
+          this.robotUtil         = 0;
+          this.avgHealth         = 100;
+          this.lowestHealth      = 100;
+          this.activeNeeds       = { emergency: 0, medication: 0, comfort: 0, visitor_escort: 0 };
+          window.simScenarioMgr?.apply(this._cfg());
+        },
+
+        setSpeed(ms) {
+          this.tickDurationMs = ms;
+          window.simRenderer?.setSpeed(ms);
+        },
+
+        /* ── Experiment actions ─────────────────────────────────────────── */
+        openExperiment() { this.expOpen = true; },
+        closeExperiment() { if (!this.expRunning) this.expOpen = false; },
+
+        async startExperiment() {
+          if (this.expRunning) return;
+          const { runExperiment } = await import('./src/ui/ExperimentPanel.js');
+          await runExperiment(this);
+        },
+
+        async downloadCSV() {
+          const { exportCSV } = await import('./src/ui/ExperimentPanel.js');
+          exportCSV(this);
+        },
+
+        /* ── Computed for experiment ───────────────────────────────────── */
+        get expProgressPct() { return this.expTotal > 0 ? (this.expProgress / this.expTotal) * 100 : 0; },
+
+        /* ── Helpers ────────────────────────────────────────────────── */
+        _cfg() {
+          return {
+            scenario:       this.scenario,
+            seed:           this.seed,
+            nurseCount:     this.nurseCount,
+            mediCount:      this.mediCount,
+            blankiCount:    this.blankiCount,
+            ediCount:       this.ediCount,
+            tickDurationMs: this.tickDurationMs,
+          };
+        },
+
+        /* ── Computed ───────────────────────────────────────────────── */
+        get tickPadded()  { return String(this.currentTick).padStart(4, '0'); },
+        get progressPct() { return (this.currentTick / this.totalTicks) * 100; },
+        get ticksPerSec() { return Math.round(1000 / this.tickDurationMs); },
+        get isComplete()  { return this.rendererReady && this.currentTick >= this.totalTicks; },
+        get statusLabel() {
+          if (!this.rendererReady) return 'INIT';
+          if (this.isComplete)     return 'DONE';
+          if (this.isRunning)      return 'LIVE';
+          return 'READY';
+        },
+        get statusClass() {
+          if (this.isRunning) return 'live';
+          if (this.isComplete) return 'done';
+          return 'init';
+        },
+        get healthClass() {
+          return this.avgHealth > 66 ? 'good' : this.avgHealth > 33 ? 'warn' : 'crit';
+        },
+        get critClass()   { return this.criticalIncidents > 0 ? 'crit' : 'good'; },
+      };
+    }
+  </script>
+
+  <!-- Alpine.js v3 — deferred so simControl() above is defined first -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+</head>
+
+<body>
+<div class="app" x-data="simControl()" x-init="init()">
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       Header
+       ══════════════════════════════════════════════════════════════════════ -->
+  <header class="hdr">
+    <div class="hdr-brand">
+      <span class="hdr-name">CGH · ABM</span>
+      <span class="hdr-sep"></span>
+      <span class="hdr-sub">Hospital Robot Simulation</span>
+    </div>
+    <span class="hdr-right">SMA-40015 &nbsp;·&nbsp; Changi General Hospital</span>
+  </header>
+
+  <!-- ══════════════════════════════════════════════════════════════════════
+       Three-column layout
+       ══════════════════════════════════════════════════════════════════════ -->
+  <div class="cols">
+
+    <!-- ════════════════════════════════════════════
+         LEFT — Control panel
+         ════════════════════════════════════════════ -->
+    <aside class="ctrl">
+
+      <!-- Status / tick readout -->
+      <div class="ctrl-sec">
+        <div class="tick-row">
+          <div>
+            <div class="tick-num" :class="{ idle: currentTick === 0 }" x-text="tickPadded"></div>
+            <div class="tick-denom">/ <span x-text="totalTicks"></span> ticks</div>
+          </div>
+          <span class="status-pill" :class="statusClass">
+            <span class="s-dot"></span>
+            <span x-text="statusLabel"></span>
+          </span>
+        </div>
+        <div class="prog-track">
+          <div class="prog-fill" :style="`width:${progressPct}%`"></div>
+        </div>
+      </div>
+
+      <!-- Playback controls -->
+      <div class="ctrl-sec">
+        <div class="sec-lbl">Playback</div>
+
+        <button
+          class="btn-play"
+          :class="{ 'is-live': isRunning }"
+          :disabled="!rendererReady || isComplete"
+          @click="isRunning ? doPause() : doPlay()"
+        >
+          <span x-text="isRunning ? '⏸' : '▶'"></span>
+          <span x-text="isRunning ? 'PAUSE' : (isComplete ? 'COMPLETE' : 'PLAY')"></span>
+        </button>
+
+        <div class="btn-2col">
+          <button
+            class="btn-sm"
+            :disabled="!rendererReady || isRunning || isComplete"
+            @click="doStep()"
+            title="Advance one tick"
+          >⏭&nbsp;STEP</button>
+          <button
+            class="btn-sm"
+            :disabled="!rendererReady"
+            @click="doReset()"
+          >↺&nbsp;RESET</button>
+        </div>
+      </div>
+
+      <!-- Scenario -->
+      <div class="ctrl-sec">
+        <div class="sec-lbl">Scenario</div>
+
+        <div class="seg">
+          <button class="seg-btn" :class="{ on: scenario === 'A' }" @click="scenario = 'A'">
+            Nurses Only
+          </button>
+          <button class="seg-btn" :class="{ on: scenario === 'B' }" @click="scenario = 'B'">
+            + Robots
+          </button>
+        </div>
+
+        <p class="scenario-hint">
+          <span x-show="scenario === 'A'">
+            Scenario&nbsp;A — all patient needs are handled by nurses only.
+          </span>
+          <span x-show="scenario === 'B'">
+            Scenario&nbsp;B — robots offload non-emergency tasks so nurses focus on emergencies.
+          </span>
+        </p>
+      </div>
+
+      <!-- Simulation parameters -->
+      <div class="ctrl-sec">
+        <div class="sec-lbl">Parameters</div>
+
+        <!-- Seed -->
+        <div class="f-row">
+          <span class="f-lbl">Seed</span>
+          <input
+            type="number"
+            class="seed-input"
+            x-model.number="seed"
+            min="1" max="9999"
+          />
+        </div>
+
+        <!-- Speed -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">Speed</span>
+            <span class="f-val accent" x-text="ticksPerSec + ' t/s'"></span>
+          </div>
+          <input
+            type="range" class="slider"
+            min="50" max="1000" step="50"
+            :value="1050 - tickDurationMs"
+            @input="setSpeed(1050 - +$event.target.value)"
+          />
+          <div class="slider-ends"><span>SLOW</span><span>FAST</span></div>
+        </div>
+
+        <!-- Nurse count -->
+        <div class="slider-wrap" style="margin-bottom:0">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:#2e7d32"></span>
+              Nurses
+            </span>
+            <span class="f-val" x-text="nurseCount"></span>
+          </div>
+          <input
+            type="range" class="slider c-green"
+            min="1" max="8" step="1"
+            x-model.number="nurseCount"
+          />
+        </div>
+      </div>
+
+      <!-- Robot fleet — only visible in Scenario B -->
+      <div class="ctrl-sec" x-show="scenario === 'B'" x-transition.opacity>
+        <div class="sec-lbl">Robot Fleet</div>
+
+        <!-- MEDi -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:#1565c0"></span>
+              MEDi
+              <span class="f-lbl-hint">medication</span>
+            </span>
+            <span class="f-val" x-text="mediCount"></span>
+          </div>
+          <input
+            type="range" class="slider c-blue"
+            min="0" max="6" step="1"
+            x-model.number="mediCount"
+          />
+        </div>
+
+        <!-- BLANKi -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:#ef6c00"></span>
+              BLANKi
+              <span class="f-lbl-hint">comfort</span>
+            </span>
+            <span class="f-val" x-text="blankiCount"></span>
+          </div>
+          <input
+            type="range" class="slider c-orange"
+            min="0" max="6" step="1"
+            x-model.number="blankiCount"
+          />
+        </div>
+
+        <!-- EDi -->
+        <div class="slider-wrap" style="margin-bottom:0">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:#7b1fa2"></span>
+              EDi
+              <span class="f-lbl-hint">visitor escort</span>
+            </span>
+            <span class="f-val" x-text="ediCount"></span>
+          </div>
+          <input
+            type="range" class="slider c-purple"
+            min="0" max="6" step="1"
+            x-model.number="ediCount"
+          />
+        </div>
+      </div>
+
+      <!-- Experiment -->
+      <div class="ctrl-sec">
+        <div class="sec-lbl">Experiment</div>
+        <p style="font-size:11px;color:var(--text-lo);line-height:1.55;margin-bottom:11px">
+          Run 30 replications of each scenario (seeds 1–30) and compare KPIs with Welch's t-test.
+        </p>
+        <button
+          class="btn-exp"
+          :disabled="!rendererReady"
+          @click="openExperiment()"
+        >⚗ Run Experiment</button>
+      </div>
+
+      <!-- Bottom spacer so last section doesn't clip -->
+      <div style="height:12px;flex-shrink:0"></div>
+    </aside>
+
+    <!-- ════════════════════════════════════════════
+         CENTER — Simulation canvas
+         ════════════════════════════════════════════ -->
+    <section class="canvas-col">
+
+      <!-- Loading state while Renderer.init() resolves -->
+      <div class="canvas-loading" x-show="!rendererReady" x-cloak>
+        <div class="loading-label">Initialising simulation</div>
+        <div class="loading-dots">
+          <div class="ld"></div>
+          <div class="ld"></div>
+          <div class="ld"></div>
+        </div>
+      </div>
+
+      <!-- Canvas shell — shown once renderer is ready -->
+      <div class="canvas-shell" x-show="rendererReady" x-cloak>
+        <div id="canvas-container"></div>
+        <div class="canvas-hud" x-text="'T = ' + currentTick"></div>
+        <div class="canvas-prog">
+          <div class="canvas-prog-fill" :style="`width:${progressPct}%`"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ════════════════════════════════════════════
+         RIGHT — KPIs + charts
+         ════════════════════════════════════════════ -->
+    <aside class="charts-col">
+
+      <!-- Live KPI cards -->
+      <div class="ch-sec">
+        <div class="sec-lbl">Live KPIs</div>
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-val" :class="critClass" x-text="criticalIncidents"></div>
+            <div class="kpi-lbl">Critical Incidents</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-val" :class="healthClass" x-text="avgHealth.toFixed(1)"></div>
+            <div class="kpi-lbl">Avg Patient Health</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-val good" x-text="(nurseUtil * 100).toFixed(0) + '%'"></div>
+            <div class="kpi-lbl">Nurse Utilisation</div>
+          </div>
+          <div class="kpi-card">
+            <div
+              class="kpi-val"
+              :class="scenario === 'B' ? 'accent' : 'dim'"
+              x-text="scenario === 'B' ? (robotUtil * 100).toFixed(0) + '%' : '—'"
+            ></div>
+            <div class="kpi-lbl">Robot Utilisation</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active need counts -->
+      <div class="ch-sec">
+        <div class="sec-lbl">Active Needs</div>
+        <div class="needs-row">
+          <div class="need-chip">
+            <div class="need-n" style="color:var(--red)"    x-text="activeNeeds.emergency"></div>
+            <div class="need-t">Emerg.</div>
+          </div>
+          <div class="need-chip">
+            <div class="need-n" style="color:var(--blue)"   x-text="activeNeeds.medication"></div>
+            <div class="need-t">Meds</div>
+          </div>
+          <div class="need-chip">
+            <div class="need-n" style="color:var(--orange)" x-text="activeNeeds.comfort"></div>
+            <div class="need-t">Comfort</div>
+          </div>
+          <div class="need-chip">
+            <div class="need-n" style="color:var(--purple)" x-text="activeNeeds.visitor_escort"></div>
+            <div class="need-t">Visitor</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Patient health chart -->
+      <div class="ch-sec">
+        <div class="sec-lbl">Patient Health</div>
+        <div style="height:132px;position:relative">
+          <canvas id="health-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Need queue chart -->
+      <div class="ch-sec">
+        <div class="sec-lbl">Need Queue</div>
+        <div style="height:110px;position:relative">
+          <canvas id="needs-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div class="ch-sec">
+        <div class="sec-lbl">Legend</div>
+        <div class="legend-grid">
+          <div class="legend-item">
+            <span class="l-dot" style="background:#fff;border:1px solid #555"></span>Patient
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#2e7d32"></span>Nurse
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#1565c0"></span>MEDi robot
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#ef6c00"></span>BLANKi robot
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#7b1fa2"></span>EDi robot
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#f44336"></span>Emergency
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#2196f3"></span>Medication
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#ff9800"></span>Comfort
+          </div>
+          <div class="legend-item">
+            <span class="l-dot" style="background:#9c27b0"></span>Visitor escort
+          </div>
+          <div class="legend-item" style="grid-column:1/-1;color:var(--text-lo);font-size:10px">
+            Bar&nbsp;above&nbsp;patient&nbsp;=&nbsp;health &nbsp;·&nbsp;
+            Bar&nbsp;below&nbsp;robot&nbsp;=&nbsp;battery &nbsp;·&nbsp;
+            Dim&nbsp;dot&nbsp;=&nbsp;claimed&nbsp;need
+          </div>
+        </div>
+      </div>
+
+      <div style="height:12px;flex-shrink:0"></div>
+    </aside>
+
+  </div><!-- .cols -->
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       Experiment modal
+       ════════════════════════════════════════════════════════════════════ -->
+  <div class="exp-overlay" x-show="expOpen" x-cloak @keydown.escape.window="closeExperiment()">
+    <div class="exp-dialog" @click.stop>
+
+      <!-- Header -->
+      <div class="exp-header">
+        <span class="exp-title">⚗ Batch Experiment — Scenario A vs B</span>
+        <button class="exp-close" :disabled="expRunning" @click="closeExperiment()">✕</button>
+      </div>
+
+      <!-- Body -->
+      <div class="exp-body">
+
+        <!-- ── Idle state: start prompt ─────────────────────────────────── -->
+        <template x-if="!expRunning && !expDone">
+          <div style="padding:24px 0;text-align:center">
+            <p style="color:var(--text-mid);font-size:13px;line-height:1.7;margin-bottom:20px">
+              Runs <strong style="color:var(--accent)">30 replications</strong> of Scenario A (nurses only)
+              and <strong style="color:var(--green)">30 replications</strong> of Scenario B (nurses + robots),
+              then compares each KPI using <strong style="color:var(--text-hi)">Welch's t-test</strong>.
+            </p>
+            <button
+              class="btn-play"
+              style="display:inline-flex;width:auto;padding:0 28px"
+              @click="startExperiment()"
+            >▶ &nbsp;START EXPERIMENT</button>
+          </div>
+        </template>
+
+        <!-- ── Running state: progress bar ─────────────────────────────── -->
+        <template x-if="expRunning">
+          <div class="exp-prog-wrap">
+            <div class="exp-prog-frac" x-text="expProgress + ' / ' + expTotal"></div>
+            <div class="exp-prog-track" style="width:100%;max-width:480px">
+              <div class="exp-prog-fill" :style="`width:${expProgressPct}%`"></div>
+            </div>
+            <div class="exp-prog-status" x-text="expStatus"></div>
+            <div class="exp-prog-label">running headless replications…</div>
+          </div>
+        </template>
+
+        <!-- ── Done state: results table ───────────────────────────────── -->
+        <template x-if="expDone && expResults">
+          <div>
+            <p style="font-size:11px;color:var(--text-lo);margin-bottom:14px" x-text="expStatus"></p>
+
+            <div class="exp-table-wrap">
+              <table class="exp-table">
+                <thead>
+                  <tr>
+                    <th style="text-align:left">KPI</th>
+                    <th class="col-a">A&nbsp;Mean</th>
+                    <th class="col-a">A&nbsp;95%&nbsp;CI</th>
+                    <th class="col-b">B&nbsp;Mean</th>
+                    <th class="col-b">B&nbsp;95%&nbsp;CI</th>
+                    <th>Δ (B−A)</th>
+                    <th>p&nbsp;value</th>
+                    <th>Sig.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-for="r in expResults" :key="r.label">
+                    <tr>
+                      <td x-text="r.label"></td>
+                      <td x-text="r.dA.mean.toFixed(2) + (r.unit ? ' ' + r.unit : '')"></td>
+                      <td style="color:var(--text-lo);font-size:10px"
+                          x-text="'[' + r.dA.ciLow.toFixed(2) + ', ' + r.dA.ciHigh.toFixed(2) + ']'"></td>
+                      <td x-text="r.dB.mean.toFixed(2) + (r.unit ? ' ' + r.unit : '')"></td>
+                      <td style="color:var(--text-lo);font-size:10px"
+                          x-text="'[' + r.dB.ciLow.toFixed(2) + ', ' + r.dB.ciHigh.toFixed(2) + ']'"></td>
+                      <td
+                        :style="(r.dB.mean - r.dA.mean) < 0 ? 'color:var(--green)' : (r.dB.mean - r.dA.mean) > 0 ? 'color:var(--amber)' : ''"
+                        x-text="(r.dB.mean - r.dA.mean >= 0 ? '+' : '') + (r.dB.mean - r.dA.mean).toFixed(2)"
+                      ></td>
+                      <td x-text="r.test.p < 0.0001 ? '<0.0001' : r.test.p.toFixed(4)"></td>
+                      <td>
+                        <span :class="r.test.significant ? 'sig-yes' : 'sig-no'"
+                              x-text="r.stars || (r.test.significant ? 'yes' : 'ns')"></span>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+
+            <p class="exp-table-note">
+              Welch's t-test (unequal variances) · α = 0.05 · n = 30 per scenario ·
+              Stars: *** p&lt;0.001 · ** p&lt;0.01 · * p&lt;0.05 · † p&lt;0.10 · ns = not significant ·
+              Δ = B − A (negative = B improved)
+            </p>
+          </div>
+        </template>
+
+      </div><!-- .exp-body -->
+
+      <!-- Footer -->
+      <div class="exp-footer">
+        <template x-if="expDone">
+          <button class="btn-csv" @click="downloadCSV()">⬇ Export CSV</button>
+        </template>
+        <template x-if="expDone">
+          <button class="btn-exp" style="width:auto;padding:0 16px" @click="startExperiment()">
+            ↺ Re-run
+          </button>
+        </template>
+        <button class="btn-sm" :disabled="expRunning" @click="closeExperiment()"
+                style="padding:0 16px;height:34px">
+          Close
+        </button>
+      </div>
+
+    </div><!-- .exp-dialog -->
+  </div><!-- .exp-overlay -->
+
+  </div><!-- .app -->
+</body>
+</html>
