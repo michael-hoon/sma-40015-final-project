@@ -206,8 +206,7 @@ export default class RobotEDi extends Agent {
 
   /** @private */
   _beginServing(currentTick) {
-    const [min, max] = this.config.SERVICE_TIME.robot['visitor_escort'];
-    this.serviceTicksRemaining = this.rng.randomInt(min, max);
+    this.serviceTicksRemaining = 0;
     this.needQueue.markInProgress(this.currentNeed.id, currentTick);
     this.state = STATES.SERVING;
   }

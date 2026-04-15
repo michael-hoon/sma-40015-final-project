@@ -1,12 +1,19 @@
 /**
  * @fileoverview Nurse agent. Handles ALL need types including emergencies.
  * Decision: score unclaimed needs by (urgency × wait_ticks / distance), claim highest.
+ * Carries up to NURSE_ITEM_CAPACITY items (1 medicine + 1 blanket); restocks at the
+ * nearest NURSE_STATION (refilling station) when both inventory counts reach 0.
  * States: IDLE → MOVING_TO_PATIENT → SERVING → IDLE
+ *         IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE (visitor_escort only)
+ *         IDLE → MOVING_TO_REFILL → REFILLING → IDLE (when medicine+blanket inventory = 0)
  */
 import Agent from './Agent.js';
 
 const STATES = {
   IDLE: 'IDLE',
+  MOVING_TO_ENTRANCE: 'MOVING_TO_ENTRANCE',
+  MOVING_TO_REFILL: 'MOVING_TO_REFILL',
+  REFILLING: 'REFILLING',
   MOVING_TO_PATIENT: 'MOVING_TO_PATIENT',
   SERVING: 'SERVING',
 };
@@ -36,6 +43,15 @@ export default class Nurse extends Agent {
 
     /** @type {number} Tick when service began (for emergency response time stat) */
     this.serviceStartTick = 0;
+
+    /** Medicine vials carried (max 1, shared with blanket up to NURSE_ITEM_CAPACITY) */
+    this.medicineCount = 1;
+    /** Blankets carried (max 1, shared with medicine up to NURSE_ITEM_CAPACITY) */
+    this.blanketCount = 1;
+    /** Ticks remaining in the current refill process */
+    this.refillTicksRemaining = 0;
+    /** Total ticks for the current refill (used by renderer to show progress) */
+    this.totalRefillTicks = 0;
   }
 
   /**
@@ -47,12 +63,15 @@ export default class Nurse extends Agent {
     if (this.state !== STATES.IDLE) return;
 
     const openNeeds = this.needQueue.getOpenNeeds();
-    if (openNeeds.length === 0) return;
 
     let bestNeed = null;
     let bestScore = -Infinity;
 
     for (const need of openNeeds) {
+      // Skip needs that require items we don't currently carry
+      if (need.type === 'medication' && this.medicineCount === 0) continue;
+      if (need.type === 'comfort' && this.blanketCount === 0) continue;
+
       const waitTicks = Math.max(1, currentTick - need.createdAtTick);
       const distance = Math.max(1, this.grid.manhattanDistance(this.position, need.position));
       const score = (need.urgencyWeight * waitTicks) / distance;
@@ -63,12 +82,39 @@ export default class Nurse extends Agent {
       }
     }
 
-    if (!bestNeed) return;
+    if (!bestNeed) {
+      // No serviceable need — refill proactively if both item counts are zero
+      if (this.medicineCount + this.blanketCount === 0) this._goRefill();
+      return;
+    }
 
     const claimed = this.needQueue.claimNeed(bestNeed.id, this.id);
     if (!claimed) return;
 
     this.currentNeed = bestNeed;
+
+    // For visitor_escort, go to nearest entrance first to "pick up" the visitor
+    if (bestNeed.type === 'visitor_escort') {
+      const entrances = this.grid.getEntrances();
+      if (entrances.length > 0) {
+        let nearestEntrance = entrances[0];
+        let nearestDist = this.grid.manhattanDistance(this.position, entrances[0]);
+        for (const e of entrances) {
+          const d = this.grid.manhattanDistance(this.position, e);
+          if (d < nearestDist) { nearestDist = d; nearestEntrance = e; }
+        }
+        const reached = this.setDestination(nearestEntrance);
+        if (!reached) {
+          this.needQueue.unclaimNeed(bestNeed.id);
+          this.currentNeed = null;
+          return;
+        }
+        this.state = STATES.MOVING_TO_ENTRANCE;
+        return;
+      }
+    }
+
+    // Default: go directly to patient (all other need types, or no entrances)
     const reached = this.setDestination(bestNeed.position);
     if (!reached) {
       // Can't reach patient — unclaim and stay IDLE
@@ -85,20 +131,51 @@ export default class Nurse extends Agent {
    * @param {number} currentTick
    */
   move(currentTick) {
-    if (this.state !== STATES.MOVING_TO_PATIENT) return;
-
-    const arrived = this.moveStep();
-    if (arrived) {
-      this._beginServing(currentTick);
+    switch (this.state) {
+      case STATES.MOVING_TO_REFILL: {
+        const arrived = this.moveStep();
+        if (arrived) {
+          // Begin timed refill — inventory restored only when REFILLING completes
+          const ticks = 1 * this.config.REFILL_TIME_PER_MEDICINE
+                      + 1 * this.config.REFILL_TIME_PER_BLANKET;
+          this.refillTicksRemaining = Math.max(1, ticks);
+          this.totalRefillTicks = this.refillTicksRemaining;
+          this.clearPath();
+          this.state = STATES.REFILLING;
+        }
+        break;
+      }
+      case STATES.MOVING_TO_ENTRANCE: {
+        const arrived = this.moveStep();
+        if (arrived) {
+          const reached = this.setDestination(this.currentNeed.position);
+          if (!reached) {
+            this.needQueue.unclaimNeed(this.currentNeed.id);
+            this.currentNeed = null;
+            this.state = STATES.IDLE;
+          } else {
+            this.state = STATES.MOVING_TO_PATIENT;
+          }
+        }
+        break;
+      }
+      case STATES.MOVING_TO_PATIENT: {
+        const arrived = this.moveStep();
+        if (arrived) this._beginServing(currentTick);
+        break;
+      }
     }
   }
 
   /**
-   * Task execution phase (tick step 5). Decrement service timer.
+   * Task execution phase (tick step 5). Decrement service or refill timer.
    */
   executeTask() {
-    if (this.state !== STATES.SERVING) return;
-    this.serviceTicksRemaining--;
+    if (this.state === STATES.SERVING) {
+      this.serviceTicksRemaining--;
+    } else if (this.state === STATES.REFILLING) {
+      this.refillTicksRemaining--;
+    }
   }
 
   /**
@@ -106,16 +183,44 @@ export default class Nurse extends Agent {
    * @returns {object|null} The fulfilled need (for patient health recovery), or null
    */
   transitionState() {
+    // Refill completion — restore inventory to capacity
+    if (this.state === STATES.REFILLING && this.refillTicksRemaining <= 0) {
+      this.medicineCount = 1;
+      this.blanketCount = 1;
+      this.totalRefillTicks = 0;
+      this.state = STATES.IDLE;
+      return null;
+    }
+
     if (this.state !== STATES.SERVING) return null;
     if (this.serviceTicksRemaining > 0) return null;
 
     const fulfilledNeed = this.currentNeed;
+    // Consume the carried item for needs that require one
+    if (fulfilledNeed.type === 'medication') this.medicineCount--;
+    else if (fulfilledNeed.type === 'comfort') this.blanketCount--;
     this.needQueue.fulfillNeed(fulfilledNeed.id);
     this.currentNeed = null;
     this.clearPath();
     this.state = STATES.IDLE;
 
     return fulfilledNeed;
+  }
+
+  /** @private */
+  _goRefill() {
+    const stations = this.grid.getNurseStations();
+    if (stations.length === 0) return;
+
+    let nearest = stations[0];
+    let nearestDist = this.grid.manhattanDistance(this.position, stations[0]);
+    for (const s of stations) {
+      const d = this.grid.manhattanDistance(this.position, s);
+      if (d < nearestDist) { nearestDist = d; nearest = s; }
+    }
+
+    const reached = this.setDestination(nearest);
+    if (reached) this.state = STATES.MOVING_TO_REFILL;
   }
 
   /** @private */

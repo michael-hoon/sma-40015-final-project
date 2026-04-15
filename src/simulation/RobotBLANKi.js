@@ -1,13 +1,19 @@
 /**
  * @fileoverview BLANKi robot — serves comfort needs only.
- * Identical state machine and battery mechanics to MEDi; only served need type differs.
+ * Carries up to BLANKI_ITEM_CAPACITY blankets; must visit the refilling station
+ * (nearest NURSE_STATION cell) to restock when inventory reaches 0.
  * States: IDLE → MOVING_TO_PATIENT → SERVING → IDLE
+ *         IDLE → MOVING_TO_REFILL → REFILLING → IDLE (when blanket inventory = 0)
  *         IDLE → MOVING_TO_CHARGER → CHARGING → IDLE
+ *
+ * Battery mechanics: drains while moving/serving/idle; triggers charger trip when low.
  */
 import Agent from './Agent.js';
 
 const STATES = {
   IDLE: 'IDLE',
+  MOVING_TO_REFILL: 'MOVING_TO_REFILL',
+  REFILLING: 'REFILLING',
   MOVING_TO_PATIENT: 'MOVING_TO_PATIENT',
   SERVING: 'SERVING',
   MOVING_TO_CHARGER: 'MOVING_TO_CHARGER',
@@ -41,6 +47,12 @@ export default class RobotBLANKi extends Agent {
     this.serviceTicksRemaining = 0;
     /** @type {{x: number, y: number}|null} */
     this.chargerPosition = null;
+    /** Number of blankets currently carried */
+    this.blanketCount = config.BLANKI_ITEM_CAPACITY;
+    /** Ticks remaining in the current refill process */
+    this.refillTicksRemaining = 0;
+    /** Total ticks for the current refill (used by renderer to show progress) */
+    this.totalRefillTicks = 0;
   }
 
   /**
@@ -50,6 +62,12 @@ export default class RobotBLANKi extends Agent {
     if (this.state !== STATES.IDLE) return;
     if (this.battery < this.config.BATTERY_LOW_THRESHOLD) {
       this._goCharge();
+      return;
+    }
+
+    // Go restock if inventory is depleted
+    if (this.blanketCount === 0) {
+      this._goRefill();
       return;
     }
 
@@ -85,6 +103,18 @@ export default class RobotBLANKi extends Agent {
    */
   move(currentTick) {
     switch (this.state) {
+      case STATES.MOVING_TO_REFILL: {
+        const arrived = this.moveStep();
+        if (arrived) {
+          // Begin timed refill — inventory restored only when REFILLING completes
+          const ticks = this.config.BLANKI_ITEM_CAPACITY * this.config.REFILL_TIME_PER_BLANKET;
+          this.refillTicksRemaining = Math.max(1, ticks);
+          this.totalRefillTicks = this.refillTicksRemaining;
+          this.clearPath();
+          this.state = STATES.REFILLING;
+        }
+        break;
+      }
       case STATES.MOVING_TO_PATIENT: {
         const arrived = this.moveStep();
         if (arrived) this._beginServing(currentTick);
@@ -102,6 +132,8 @@ export default class RobotBLANKi extends Agent {
   executeTask() {
     if (this.state === STATES.SERVING) {
       this.serviceTicksRemaining--;
+    } else if (this.state === STATES.REFILLING) {
+      this.refillTicksRemaining--;
     }
   }
 
@@ -111,10 +143,12 @@ export default class RobotBLANKi extends Agent {
    */
   transitionState() {
     switch (this.state) {
+      case STATES.MOVING_TO_REFILL:
       case STATES.MOVING_TO_PATIENT:
       case STATES.MOVING_TO_CHARGER:
         this.battery = Math.max(0, this.battery - this.config.BATTERY_DRAIN_MOVING);
         break;
+      case STATES.REFILLING:
       case STATES.SERVING:
         this.battery = Math.max(0, this.battery - this.config.BATTERY_DRAIN_SERVING);
         break;
@@ -130,8 +164,12 @@ export default class RobotBLANKi extends Agent {
         break;
     }
 
+    // Low battery check — abandon current task (currentNeed is null during refill/refilling)
     if (
-      (this.state === STATES.MOVING_TO_PATIENT || this.state === STATES.SERVING) &&
+      (this.state === STATES.MOVING_TO_REFILL ||
+       this.state === STATES.REFILLING ||
+       this.state === STATES.MOVING_TO_PATIENT ||
+       this.state === STATES.SERVING) &&
       this.battery < this.config.BATTERY_LOW_THRESHOLD
     ) {
       if (this.currentNeed) {
@@ -142,8 +180,18 @@ export default class RobotBLANKi extends Agent {
       return null;
     }
 
+    // Refill completion — restore full inventory
+    if (this.state === STATES.REFILLING && this.refillTicksRemaining <= 0) {
+      this.blanketCount = this.config.BLANKI_ITEM_CAPACITY;
+      this.totalRefillTicks = 0;
+      this.state = STATES.IDLE;
+      return null;
+    }
+
+    // Task completion — consume one blanket
     if (this.state === STATES.SERVING && this.serviceTicksRemaining <= 0) {
       const fulfilledNeed = this.currentNeed;
+      this.blanketCount--;
       this.needQueue.fulfillNeed(fulfilledNeed.id);
       this.currentNeed = null;
       this.clearPath();
@@ -160,6 +208,22 @@ export default class RobotBLANKi extends Agent {
     this.serviceTicksRemaining = this.rng.randomInt(min, max);
     this.needQueue.markInProgress(this.currentNeed.id, currentTick);
     this.state = STATES.SERVING;
+  }
+
+  /** @private */
+  _goRefill() {
+    const stations = this.grid.getNurseStations();
+    if (stations.length === 0) return;
+
+    let nearest = stations[0];
+    let nearestDist = this.grid.manhattanDistance(this.position, stations[0]);
+    for (const s of stations) {
+      const d = this.grid.manhattanDistance(this.position, s);
+      if (d < nearestDist) { nearestDist = d; nearest = s; }
+    }
+
+    const reached = this.setDestination(nearest);
+    if (reached) this.state = STATES.MOVING_TO_REFILL;
   }
 
   /** @private */

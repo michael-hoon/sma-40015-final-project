@@ -2,6 +2,7 @@
  * @fileoverview Creates and updates Pixi.js sprites for all agent types.
  * Each agent gets a Container holding a coloured circle + text label.
  * Patient containers additionally show small need-indicator dots.
+ * Nurse, MEDi, and BLANKi containers show an inventory bar above the circle.
  *
  * Position interpolation: recordPositions() is called before each sim tick to
  * snapshot the pre-tick position; update(lerpT, ...) then interpolates display
@@ -34,7 +35,26 @@ const NEED_COLORS = {
   visitor_escort: 0x9c27b0,
 };
 
+/** Inventory bar colours — lighter tints of the item need colours */
+const INV_COLORS = {
+  medicine: 0x64b5f6,  // light blue (medication)
+  blanket:  0xffb74d,  // light orange (comfort)
+};
+
 const NEED_ORDER = ['emergency', 'medication', 'comfort', 'visitor_escort'];
+
+/**
+ * Compute refill progress fraction (0 = just started, 1 = complete) for an agent
+ * that is currently in the REFILLING state.
+ * @param {{totalRefillTicks: number, refillTicksRemaining: number}} agent
+ * @returns {number} 0–1
+ */
+function _refillProgress(agent) {
+  if (!agent.totalRefillTicks) return 0;
+  return Math.max(0, Math.min(1,
+    (agent.totalRefillTicks - agent.refillTicksRemaining) / agent.totalRefillTicks,
+  ));
+}
 
 /**
  * Infer the display type from an agent id string.
@@ -62,7 +82,7 @@ export default class AgentSprites {
 
     /**
      * Keyed by agent id.
-     * @type {Map<string, {container: PIXI.Container, needDots: PIXI.Graphics|null, prevPos: {x:number,y:number}, currPos: {x:number,y:number}}>}
+     * @type {Map<string, {container: PIXI.Container, needDots: PIXI.Graphics|null, invBar: PIXI.Graphics|null, prevPos: {x:number,y:number}, currPos: {x:number,y:number}}>}
      */
     this._sprites = new Map();
   }
@@ -127,6 +147,13 @@ export default class AgentSprites {
       cont.addChild(needDots);
     }
 
+    // Inventory bar (nurse, medi, blanki only)
+    let invBar = null;
+    if (type === 'nurse' || type === 'medi' || type === 'blanki') {
+      invBar = new PIXI.Graphics();
+      cont.addChild(invBar);
+    }
+
     // Initial position
     const px = agent.position.x * cs + cs / 2;
     const py = agent.position.y * cs + cs / 2;
@@ -136,6 +163,7 @@ export default class AgentSprites {
     this._sprites.set(agent.id, {
       container: cont,
       needDots,
+      invBar,
       prevPos: { ...agent.position },
       currPos: { ...agent.position },
     });
@@ -158,7 +186,7 @@ export default class AgentSprites {
   }
 
   /**
-   * Render interpolated agent positions and refresh patient need dots.
+   * Render interpolated agent positions and refresh patient need dots + agent inventory.
    * @param {number} lerpT - 0–1 progress through the current tick interval
    * @param {object[]} patients
    * @param {object[]} nurses
@@ -192,6 +220,29 @@ export default class AgentSprites {
       const needs = needsByPatient.get(patient.id) ?? [];
       this._drawNeedDots(s.needDots, needs, cs);
     }
+
+    // Update inventory bars for nurses and robots
+    for (const nurse of nurses) {
+      const s = this._sprites.get(nurse.id);
+      if (!s || !s.invBar) continue;
+      this._drawNurseInventory(s.invBar, nurse, cs);  // nurse object passed directly
+    }
+    for (const robot of robots) {
+      const s = this._sprites.get(robot.id);
+      if (!s || !s.invBar) continue;
+      const type = agentType(robot.id);
+      if (type === 'medi') {
+        const frac = robot.state === 'REFILLING'
+          ? _refillProgress(robot)
+          : robot.medicineCount / robot.config.MEDI_ITEM_CAPACITY;
+        this._drawFillBar(s.invBar, frac, INV_COLORS.medicine, robot.state === 'REFILLING', cs);
+      } else if (type === 'blanki') {
+        const frac = robot.state === 'REFILLING'
+          ? _refillProgress(robot)
+          : robot.blanketCount / robot.config.BLANKI_ITEM_CAPACITY;
+        this._drawFillBar(s.invBar, frac, INV_COLORS.blanket, robot.state === 'REFILLING', cs);
+      }
+    }
   }
 
   /** @private */
@@ -220,6 +271,79 @@ export default class AgentSprites {
         g.circle(cx, offsetY, dotR + 1.5).stroke({ color, width: 1.2, alpha: 0.9 });
       }
     });
+  }
+
+  /**
+   * Draw two side-by-side pip squares above a nurse circle:
+   * left = medicine (blue), right = blanket (orange).
+   * Filled when the nurse has the item, dark when empty.
+   * During REFILLING, shows a shared progress bar instead of pips.
+   * @private
+   */
+  _drawNurseInventory(g, nurse, cs) {
+    g.clear();
+    const pipW = Math.max(4, cs * 0.26);
+    const pipH = Math.max(2, cs * 0.10);
+    const gap  = Math.max(1, cs * 0.04);
+    const barY = -(cs * 0.50) - pipH / 2;  // centred at top of cell
+
+    if (nurse.state === 'REFILLING') {
+      // Show a single progress bar that fills left-to-right as refilling proceeds
+      const barW = pipW * 2 + gap;
+      const frac = _refillProgress(nurse);
+      g.rect(-barW / 2, barY, barW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+      if (frac > 0) {
+        // Gradient-like: blend medicine blue on left, blanket orange on right
+        g.rect(-barW / 2, barY, (barW / 2) * Math.min(1, frac * 2), pipH)
+          .fill({ color: INV_COLORS.medicine });
+        if (frac > 0.5) {
+          g.rect(0, barY, (barW / 2) * ((frac - 0.5) * 2), pipH)
+            .fill({ color: INV_COLORS.blanket });
+        }
+      }
+      return;
+    }
+
+    const startX = -(pipW + gap / 2);
+
+    // Medicine pip (left, blue)
+    g.rect(startX, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+    if (nurse.medicineCount > 0) {
+      g.rect(startX, barY, pipW, pipH).fill({ color: INV_COLORS.medicine });
+    }
+
+    // Blanket pip (right, orange)
+    g.rect(startX + pipW + gap, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+    if (nurse.blanketCount > 0) {
+      g.rect(startX + pipW + gap, barY, pipW, pipH).fill({ color: INV_COLORS.blanket });
+    }
+  }
+
+  /**
+   * Draw a horizontal fill bar above a robot circle showing inventory level.
+   * During refilling, the bar fills from left to right showing restock progress.
+   * @param {PIXI.Graphics} g
+   * @param {number} frac - 0–1 fill fraction
+   * @param {number} fillColor - bar fill colour
+   * @param {boolean} isRefilling - true when agent is in REFILLING state
+   * @param {number} cs - cell size
+   * @private
+   */
+  _drawFillBar(g, frac, fillColor, isRefilling, cs) {
+    g.clear();
+    const barW = cs * 0.78;
+    const barH = Math.max(2, cs * 0.10);
+    const barY = -(cs * 0.50) - barH / 2;  // centred at top of cell
+    const f = Math.max(0, Math.min(1, frac));
+
+    // Dark background track
+    g.rect(-barW / 2, barY, barW, barH).fill({ color: 0x222222, alpha: 0.65 });
+
+    if (f > 0) {
+      // Use a lighter tint during refilling to signal "loading"
+      const color = isRefilling ? 0xaaaaaa : fillColor;
+      g.rect(-barW / 2, barY, barW * f, barH).fill({ color });
+    }
   }
 
   /** Destroy all sprites. */

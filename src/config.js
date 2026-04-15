@@ -64,10 +64,10 @@ export const CONFIG = {
 
   // ── Patient needs — spawn probability per tick (checked independently) ──────
   NEED_SPAWN_RATE: {
-    emergency: 0.005,
-    medication: 0.02,
-    comfort: 0.04,
-    visitor_escort: 0.015,
+    emergency: 0.00005,
+    medication: 0.002,
+    comfort: 0.008,
+    visitor_escort: 0.0015, //0.0015,
   },
 
   // ── Need urgency weights (used in nurse scoring formula) ────────────────────
@@ -81,16 +81,16 @@ export const CONFIG = {
   // ── Health mechanics ────────────────────────────────────────────────────────
   /** Health drain per tick for each active unfulfilled need */
   HEALTH_DRAIN_PER_TICK: {
-    emergency: 2.0,
-    medication: 0.8,
-    comfort: 0.3,
-    visitor_escort: 0.1,
+    emergency: 1.0,
+    medication: 0.3,
+    comfort: 0.1,
+    visitor_escort: 0.05,
   },
   /** Health gained when a need is fulfilled */
-  HEALTH_RECOVERY_PER_NEED: 5,
+  HEALTH_RECOVERY_PER_NEED: 25,
   HEALTH_MAX: 100,
   /** Health reset value after a critical incident (health reaching 0) */
-  HEALTH_CRITICAL_RESET: 30,
+  HEALTH_CRITICAL_RESET: 50,
 
   // ── Service times [min, max] in ticks ───────────────────────────────────────
   SERVICE_TIME: {
@@ -108,14 +108,28 @@ export const CONFIG = {
   },
 
   /** EDi ACCOMPANYING state duration [min, max] in ticks */
-  EDI_ACCOMPANYING_TIME: [20, 60],
+  // EDI_ACCOMPANYING_TIME: [20, 60],
+
+  // ── Item capacities ─────────────────────────────────────────────────────────
+  /** Nurse carries up to 2 items total, split 1 medicine + 1 blanket on refill */
+  NURSE_ITEM_CAPACITY: 2,
+  /** MEDi carries this many medicine vials before needing to visit refilling station */
+  MEDI_ITEM_CAPACITY: 6,
+  /** BLANKi carries this many blankets before needing to visit refilling station */
+  BLANKI_ITEM_CAPACITY: 15,
+
+  // ── Refilling station times ──────────────────────────────────────────────────
+  /** Ticks required to restock one medicine vial at the refilling station */
+  REFILL_TIME_PER_MEDICINE: 1,
+  /** Ticks required to restock one blanket at the refilling station */
+  REFILL_TIME_PER_BLANKET: 1,
 
   // ── Robot battery ───────────────────────────────────────────────────────────
   BATTERY_MAX: 100,
   /** Battery drain per tick while the robot is moving */
   BATTERY_DRAIN_MOVING: 0.5,
   /** Battery drain per tick while the robot is serving */
-  BATTERY_DRAIN_SERVING: 0.3,
+  BATTERY_DRAIN_SERVING: 0.1,
   /** Battery drain per tick while the robot is idle */
   BATTERY_DRAIN_IDLE: 0.1,
   /** Battery level that triggers a move-to-charger transition */
