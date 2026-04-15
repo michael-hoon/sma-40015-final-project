@@ -274,49 +274,45 @@ export default class AgentSprites {
   }
 
   /**
-   * Draw two side-by-side pip squares above a nurse circle:
-   * left = medicine (blue), right = blanket (orange).
-   * Filled when the nurse has the item, dark when empty.
-   * During REFILLING, shows a shared progress bar instead of pips.
+   * Draw pip squares above a nurse circle showing carried items.
+   * Number of pips = NURSE_ITEM_CAPACITY; pips are coloured by item type
+   * (blue = medicine, orange = blanket) reflecting the actual dynamic inventory.
+   * During REFILLING, shows a neutral progress bar instead of pips.
    * @private
    */
   _drawNurseInventory(g, nurse, cs) {
     g.clear();
+    const capacity = nurse.config?.NURSE_ITEM_CAPACITY ?? 2;
     const pipW = Math.max(4, cs * 0.26);
     const pipH = Math.max(2, cs * 0.10);
     const gap  = Math.max(1, cs * 0.04);
-    const barY = -(cs * 0.50) - pipH / 2;  // centred at top of cell
+    const totalW = pipW * capacity + gap * (capacity - 1);
+    const barY   = -(cs * 0.50) - pipH / 2;
+    const startX = -totalW / 2;
 
     if (nurse.state === 'REFILLING') {
-      // Show a single progress bar that fills left-to-right as refilling proceeds
-      const barW = pipW * 2 + gap;
+      // Neutral progress bar — allocation type is determined at arrival
       const frac = _refillProgress(nurse);
-      g.rect(-barW / 2, barY, barW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+      g.rect(startX, barY, totalW, pipH).fill({ color: 0x222222, alpha: 0.65 });
       if (frac > 0) {
-        // Gradient-like: blend medicine blue on left, blanket orange on right
-        g.rect(-barW / 2, barY, (barW / 2) * Math.min(1, frac * 2), pipH)
-          .fill({ color: INV_COLORS.medicine });
-        if (frac > 0.5) {
-          g.rect(0, barY, (barW / 2) * ((frac - 0.5) * 2), pipH)
-            .fill({ color: INV_COLORS.blanket });
-        }
+        g.rect(startX, barY, totalW * frac, pipH).fill({ color: 0xaaaaaa });
       }
       return;
     }
 
-    const startX = -(pipW + gap / 2);
+    // Build ordered item list: medicines first, then blankets, then empty slots
+    const items = [];
+    for (let i = 0; i < nurse.medicineCount; i++) items.push(INV_COLORS.medicine);
+    for (let i = 0; i < nurse.blanketCount; i++) items.push(INV_COLORS.blanket);
+    while (items.length < capacity) items.push(null);
 
-    // Medicine pip (left, blue)
-    g.rect(startX, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
-    if (nurse.medicineCount > 0) {
-      g.rect(startX, barY, pipW, pipH).fill({ color: INV_COLORS.medicine });
-    }
-
-    // Blanket pip (right, orange)
-    g.rect(startX + pipW + gap, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
-    if (nurse.blanketCount > 0) {
-      g.rect(startX + pipW + gap, barY, pipW, pipH).fill({ color: INV_COLORS.blanket });
-    }
+    items.forEach((color, i) => {
+      const x = startX + i * (pipW + gap);
+      g.rect(x, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+      if (color !== null) {
+        g.rect(x, barY, pipW, pipH).fill({ color });
+      }
+    });
   }
 
   /**

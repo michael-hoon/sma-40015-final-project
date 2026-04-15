@@ -111,7 +111,7 @@ export const CONFIG = {
   // EDI_ACCOMPANYING_TIME: [20, 60],
 
   // ── Item capacities ─────────────────────────────────────────────────────────
-  /** Nurse carries up to 2 items total, split 1 medicine + 1 blanket on refill */
+  /** Nurse carries up to 2 items total; allocation between medicine/blanket is demand-driven on refill */
   NURSE_ITEM_CAPACITY: 2,
   /** MEDi carries this many medicine vials before needing to visit refilling station */
   MEDI_ITEM_CAPACITY: 6,

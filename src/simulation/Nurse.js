@@ -1,11 +1,12 @@
 /**
  * @fileoverview Nurse agent. Handles ALL need types including emergencies.
  * Decision: score unclaimed needs by (urgency × wait_ticks / distance), claim highest.
- * Carries up to NURSE_ITEM_CAPACITY items (1 medicine + 1 blanket); restocks at the
- * nearest NURSE_STATION (refilling station) when both inventory counts reach 0.
+ * Carries up to NURSE_ITEM_CAPACITY items; allocation between medicine and blanket is
+ * demand-driven (e.g. 2+0, 1+1, or 0+2). Restocks at the nearest NURSE_STATION when
+ * idle with empty slots and no serviceable need available.
  * States: IDLE → MOVING_TO_PATIENT → SERVING → IDLE
  *         IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE (visitor_escort only)
- *         IDLE → MOVING_TO_REFILL → REFILLING → IDLE (when medicine+blanket inventory = 0)
+ *         IDLE → MOVING_TO_REFILL → REFILLING → IDLE (when inventory has empty slots)
  */
 import Agent from './Agent.js';
 
@@ -44,14 +45,18 @@ export default class Nurse extends Agent {
     /** @type {number} Tick when service began (for emergency response time stat) */
     this.serviceStartTick = 0;
 
-    /** Medicine vials carried (max 1, shared with blanket up to NURSE_ITEM_CAPACITY) */
+    /** Medicine vials carried; dynamically allocated on refill based on queue demand */
     this.medicineCount = 1;
-    /** Blankets carried (max 1, shared with medicine up to NURSE_ITEM_CAPACITY) */
+    /** Blankets carried; dynamically allocated on refill based on queue demand */
     this.blanketCount = 1;
     /** Ticks remaining in the current refill process */
     this.refillTicksRemaining = 0;
     /** Total ticks for the current refill (used by renderer to show progress) */
     this.totalRefillTicks = 0;
+    /** Medicine vials to add when current refill completes */
+    this._pendingMedRefill = 0;
+    /** Blankets to add when current refill completes */
+    this._pendingBlanketRefill = 0;
   }
 
   /**
@@ -83,8 +88,8 @@ export default class Nurse extends Agent {
     }
 
     if (!bestNeed) {
-      // No serviceable need — refill proactively if both item counts are zero
-      if (this.medicineCount + this.blanketCount === 0) this._goRefill();
+      // No serviceable need — refill if there are empty slots in the inventory
+      if (this.medicineCount + this.blanketCount < this.config.NURSE_ITEM_CAPACITY) this._goRefill();
       return;
     }
 
@@ -135,9 +140,17 @@ export default class Nurse extends Agent {
       case STATES.MOVING_TO_REFILL: {
         const arrived = this.moveStep();
         if (arrived) {
-          // Begin timed refill — inventory restored only when REFILLING completes
-          const ticks = 1 * this.config.REFILL_TIME_PER_MEDICINE
-                      + 1 * this.config.REFILL_TIME_PER_BLANKET;
+          // Calculate demand-based allocation at arrival (most current queue snapshot)
+          const slotsAvailable = this.config.NURSE_ITEM_CAPACITY
+                               - this.medicineCount - this.blanketCount;
+          const openNeeds = this.needQueue.getOpenNeeds();
+          const medDemand     = openNeeds.filter(n => n.type === 'medication').length;
+          const comfortDemand = openNeeds.filter(n => n.type === 'comfort').length;
+          const [medRefill, blanketRefill] = this._allocateRefill(slotsAvailable, medDemand, comfortDemand);
+          this._pendingMedRefill     = medRefill;
+          this._pendingBlanketRefill = blanketRefill;
+          const ticks = medRefill     * this.config.REFILL_TIME_PER_MEDICINE
+                      + blanketRefill * this.config.REFILL_TIME_PER_BLANKET;
           this.refillTicksRemaining = Math.max(1, ticks);
           this.totalRefillTicks = this.refillTicksRemaining;
           this.clearPath();
@@ -183,10 +196,12 @@ export default class Nurse extends Agent {
    * @returns {object|null} The fulfilled need (for patient health recovery), or null
    */
   transitionState() {
-    // Refill completion — restore inventory to capacity
+    // Refill completion — apply demand-based allocation
     if (this.state === STATES.REFILLING && this.refillTicksRemaining <= 0) {
-      this.medicineCount = 1;
-      this.blanketCount = 1;
+      this.medicineCount += this._pendingMedRefill;
+      this.blanketCount  += this._pendingBlanketRefill;
+      this._pendingMedRefill     = 0;
+      this._pendingBlanketRefill = 0;
       this.totalRefillTicks = 0;
       this.state = STATES.IDLE;
       return null;
@@ -205,6 +220,30 @@ export default class Nurse extends Agent {
     this.state = STATES.IDLE;
 
     return fulfilledNeed;
+  }
+
+  /**
+   * Calculates how many medicine vials and blankets to restock given available slots and demand.
+   * @private
+   * @param {number} slots - Empty slots to fill
+   * @param {number} medDemand - Count of open medication needs in queue
+   * @param {number} comfortDemand - Count of open comfort needs in queue
+   * @returns {[number, number]} [medicineToAdd, blanketsToAdd]
+   */
+  _allocateRefill(slots, medDemand, comfortDemand) {
+    if (slots <= 0) return [0, 0];
+    const total = medDemand + comfortDemand;
+    if (total === 0) {
+      // No demand data — split evenly; medicine gets the remainder on odd capacity
+      const med = Math.ceil(slots / 2);
+      return [med, slots - med];
+    }
+    if (medDemand === 0) return [0, slots];
+    if (comfortDemand === 0) return [slots, 0];
+    // Proportional split, clamped to [1, slots-1] so both types get at least 1 when both have demand
+    const medSlots = Math.round((medDemand / total) * slots);
+    const clamped  = Math.min(slots - 1, Math.max(1, medSlots));
+    return [clamped, slots - clamped];
   }
 
   /** @private */
