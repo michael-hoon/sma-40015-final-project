@@ -1,10 +1,11 @@
 /**
  * @fileoverview EDi robot — serves visitor_escort needs.
  * Special behaviour: must travel to ENTRANCE first to "pick up" the visitor,
- * then travel to the patient, then enter ACCOMPANYING state for 20–60 ticks.
+ * then travel to the patient. Once the visitor is handed off (SERVING complete),
+ * the need is fulfilled and EDi is immediately freed.
  *
  * States:
- *   IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → ACCOMPANYING → IDLE
+ *   IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE
  *   IDLE → MOVING_TO_CHARGER → CHARGING → IDLE (battery low path)
  */
 import Agent from './Agent.js';
@@ -14,7 +15,6 @@ const STATES = {
   MOVING_TO_ENTRANCE: 'MOVING_TO_ENTRANCE',
   MOVING_TO_PATIENT: 'MOVING_TO_PATIENT',
   SERVING: 'SERVING',
-  ACCOMPANYING: 'ACCOMPANYING',
   MOVING_TO_CHARGER: 'MOVING_TO_CHARGER',
   CHARGING: 'CHARGING',
 };
@@ -44,7 +44,6 @@ export default class RobotEDi extends Agent {
     /** @type {object|null} */
     this.currentNeed = null;
     this.serviceTicksRemaining = 0;
-    this.accompanyingTicksRemaining = 0;
     /** @type {{x: number, y: number}|null} */
     this.chargerPosition = null;
   }
@@ -144,13 +143,8 @@ export default class RobotEDi extends Agent {
 
   /** Task execution phase (tick step 5). */
   executeTask() {
-    switch (this.state) {
-      case STATES.SERVING:
-        this.serviceTicksRemaining--;
-        break;
-      case STATES.ACCOMPANYING:
-        this.accompanyingTicksRemaining--;
-        break;
+    if (this.state === STATES.SERVING) {
+      this.serviceTicksRemaining--;
     }
   }
 
@@ -167,7 +161,6 @@ export default class RobotEDi extends Agent {
         this.battery = Math.max(0, this.battery - this.config.BATTERY_DRAIN_MOVING);
         break;
       case STATES.SERVING:
-      case STATES.ACCOMPANYING:
         this.battery = Math.max(0, this.battery - this.config.BATTERY_DRAIN_SERVING);
         break;
       case STATES.IDLE:
@@ -187,36 +180,25 @@ export default class RobotEDi extends Agent {
     if (
       (this.state === STATES.MOVING_TO_ENTRANCE ||
        this.state === STATES.MOVING_TO_PATIENT ||
-       this.state === STATES.SERVING ||
-       this.state === STATES.ACCOMPANYING) &&
+       this.state === STATES.SERVING) &&
       this.battery < this.config.BATTERY_LOW_THRESHOLD
     ) {
       if (this.currentNeed) {
         this.needQueue.unclaimNeed(this.currentNeed.id);
         this.currentNeed = null;
       }
-      this.accompanyingTicksRemaining = 0;
       this._goCharge();
       return null;
     }
 
-    // Serving → Accompanying transition
+    // Serving → IDLE (visitor handed off, EDi immediately freed)
     if (this.state === STATES.SERVING && this.serviceTicksRemaining <= 0) {
-      const [minAcc, maxAcc] = this.config.EDI_ACCOMPANYING_TIME;
-      this.accompanyingTicksRemaining = this.rng.randomInt(minAcc, maxAcc);
-
-      // Fulfill the need now (visitor has been escorted)
       const fulfilledNeed = this.currentNeed;
       this.needQueue.fulfillNeed(fulfilledNeed.id);
       this.currentNeed = null;
       this.clearPath();
-      this.state = STATES.ACCOMPANYING;
-      return fulfilledNeed;
-    }
-
-    // Accompanying → IDLE
-    if (this.state === STATES.ACCOMPANYING && this.accompanyingTicksRemaining <= 0) {
       this.state = STATES.IDLE;
+      return fulfilledNeed;
     }
 
     return null;
