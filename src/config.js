@@ -66,7 +66,7 @@ export const CONFIG = {
   NEED_SPAWN_RATE: {
     emergency: 0.00005,
     medication: 0.002,
-    comfort: 0.008,
+    comfort: 0.005,
     visitor_escort: 0.0015, //0.0015,
   },
 
@@ -107,14 +107,11 @@ export const CONFIG = {
     },
   },
 
-  /** EDi ACCOMPANYING state duration [min, max] in ticks */
-  // EDI_ACCOMPANYING_TIME: [20, 60],
-
   // ── Item capacities ─────────────────────────────────────────────────────────
   /** Nurse carries up to 2 items total; allocation between medicine/blanket is demand-driven on refill */
   NURSE_ITEM_CAPACITY: 2,
   /** MEDi carries this many medicine vials before needing to visit refilling station */
-  MEDI_ITEM_CAPACITY: 6,
+  MEDI_ITEM_CAPACITY: 4,
   /** BLANKi carries this many blankets before needing to visit refilling station */
   BLANKI_ITEM_CAPACITY: 15,
 
