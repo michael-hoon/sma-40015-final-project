@@ -54,9 +54,9 @@ sma-40015-final-project/
 │   │   ├── Agent.js           # Base agent class
 │   │   ├── Patient.js         # Patient agent (health bar, need generation)
 │   │   ├── Nurse.js           # Nurse agent (scoring, decision-making, movement)
-│   │   ├── RobotMEDi.js       # MEDi robot (medication transport)
-│   │   ├── RobotBLANKi.js     # BLANKi robot (comfort items)
-│   │   ├── RobotEDi.js        # EDi robot (visitor escort + accompanying)
+│   │   ├── RobotMEDi.js       # MEDi robot (medication transport, capacity 4 vials)
+│   │   ├── RobotBLANKi.js     # BLANKi robot (comfort items, capacity 15 blankets)
+│   │   ├── RobotEDi.js        # EDi robot (visitor escort — no item capacity)
 │   │   ├── NeedQueue.js       # Global need registry (patients post needs here)
 │   │   └── Stats.js           # KPI collection per tick and per replication
 │   ├── rendering/
@@ -113,11 +113,11 @@ sma-40015-final-project/
 
 ### Tick Execution Order (STRICT — do not reorder)
 1. **Patients** generate new needs (stochastic, based on per-type spawn rates)
-2. **Robots** scan NeedQueue, select nearest matching need, claim it
-3. **Nurses** scan NeedQueue (unclaimed + emergency-only), score by `urgency × wait_time / distance`, claim highest-scoring
-4. **All agents move** one step toward their target (grid-based movement)
-5. **Task execution** — agents at their target perform the task (decrement remaining service time)
-6. **State transitions** — completed tasks free the agent; patients with fulfilled needs recover health; battery drain/charge for robots
+2. **Robots** scan NeedQueue, select nearest matching need, claim it; robots with empty inventory go to NURSE_STATION to refill instead
+3. **Nurses** scan NeedQueue (unclaimed + emergency-only), score by `urgency × wait_time / distance`, claim highest-scoring; nurses skip needs requiring items they don't carry; nurses with empty inventory slots and no serviceable need go to NURSE_STATION to refill
+4. **All agents move** one step toward their target (grid-based movement); visitor_escort handlers (nurses and EDi) go to ENTRANCE first, then to patient
+5. **Task execution** — agents at their target perform the task (decrement service time or refill timer)
+6. **State transitions** — completed tasks/refills free the agent; patients with fulfilled needs recover health; battery drain/charge for robots
 7. **Health drain** — all patients with unfulfilled needs lose health (rate depends on need urgency)
 8. **Stats collection** — record KPIs for this tick
 

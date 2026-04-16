@@ -116,24 +116,42 @@ Nurses are the **primary caregivers**. They can handle ALL need types, including
 
 ```
 IDLE → MOVING_TO_PATIENT → SERVING → IDLE
+IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE  (visitor_escort only)
+IDLE → MOVING_TO_REFILL → REFILLING → IDLE  (when inventory has empty slots and no serviceable need)
 ```
 
 | State | Description |
 |-------|-------------|
-| `IDLE` | At nurse station, scanning NeedQueue for next task |
+| `IDLE` | Scanning NeedQueue for next task |
+| `MOVING_TO_ENTRANCE` | Navigating to ENTRANCE cell to collect the visitor (visitor_escort needs only) |
 | `MOVING_TO_PATIENT` | Navigating grid toward target patient's bed |
 | `SERVING` | At patient's bed, performing task (countdown timer) |
+| `MOVING_TO_REFILL` | Navigating to nearest NURSE_STATION to restock inventory |
+| `REFILLING` | At NURSE_STATION, waiting for timed restock to complete |
+
+#### Item Inventory
+
+Nurses carry **physical items** (medicine vials and blankets). Each service that requires an item consumes one from the nurse's inventory:
+
+- `medication` needs consume one medicine vial
+- `comfort` needs consume one blanket
+- `emergency` and `visitor_escort` needs consume no items
+
+**Capacity:** `NURSE_ITEM_CAPACITY = 2` items total (medicine + blankets combined). Allocation between types is **demand-driven**: when a nurse arrives at the refill station, it checks the current NeedQueue and splits slots proportionally between open medication and comfort demands (at least 1 of each type if both have demand).
+
+If a nurse has 0 medicine vials, it skips medication needs. If it has 0 blankets, it skips comfort needs. When idle with empty slots and no serviceable need remaining, it goes to refill.
 
 #### Decision Logic (runs when IDLE)
 
 1. Query NeedQueue for all unclaimed needs
-2. Score each need: **`score = urgency_weight × wait_ticks / manhattan_distance`**
+2. **Skip** needs that require items the nurse cannot currently carry (medication → needs ≥1 medicine vial; comfort → needs ≥1 blanket)
+3. Score each remaining need: **`score = urgency_weight × wait_ticks / manhattan_distance`**
    - `urgency_weight` = need type's urgency value (Emergency=10, Medication=5, etc.)
    - `wait_ticks` = `current_tick - need.createdAtTick`
    - `manhattan_distance` = distance from nurse's current position to patient's bed (minimum 1 to avoid division by zero)
-3. Select the **highest scoring** need
-4. **Claim** the need (mark it in NeedQueue so no other agent claims it)
-5. Transition to `MOVING_TO_PATIENT`
+4. Select the **highest scoring** need
+5. **Claim** the need; if `visitor_escort`, navigate to nearest **ENTRANCE** first; otherwise navigate directly to patient
+6. If no serviceable need exists and inventory has empty slots, navigate to nearest **NURSE_STATION** to refill
 
 #### Service Times (ticks)
 
@@ -154,17 +172,23 @@ All robots share a base state machine with battery mechanics. Each type serves s
 
 #### Shared Robot State Machine
 
+MEDi and BLANKi (item-carrying robots):
+
 ```
 IDLE → MOVING_TO_PATIENT → SERVING → IDLE
   │                                     │
-  └──── MOVING_TO_CHARGER → CHARGING ───┘
+  ├──── MOVING_TO_REFILL → REFILLING ───┤  (inventory depleted)
+  │                                     │
+  └──── MOVING_TO_CHARGER → CHARGING ───┘  (battery low)
 ```
 
 | State | Description |
 |-------|-------------|
 | `IDLE` | At current position, scanning NeedQueue for matching needs |
 | `MOVING_TO_PATIENT` | Navigating to target patient |
-| `SERVING` | Performing task at patient's bed |
+| `SERVING` | Performing task at patient's bed (consumes one item from inventory) |
+| `MOVING_TO_REFILL` | Inventory depleted; navigating to nearest NURSE_STATION to restock |
+| `REFILLING` | At NURSE_STATION; waiting for timed restock to complete |
 | `MOVING_TO_CHARGER` | Battery low, navigating to nearest available charging bay |
 | `CHARGING` | At charging bay, recharging (cannot serve during this time) |
 
@@ -174,43 +198,50 @@ IDLE → MOVING_TO_PATIENT → SERVING → IDLE
 |-----------|-------|
 | Max battery | 100 |
 | Drain per tick (while moving) | 0.5 |
-| Drain per tick (while serving) | 0.3 |
+| Drain per tick (while serving or refilling) | 0.1 |
 | Drain per tick (while idle) | 0.1 |
 | Low battery threshold | 20 (triggers move to charger) |
 | Charge rate per tick | 2.0 |
 | Full charge | 100 (resume IDLE) |
 
 - When battery drops below threshold, robot **abandons current task** (unclaims the need, returns it to NeedQueue), transitions to `MOVING_TO_CHARGER`
-- Robot selects the **nearest unoccupied** charging bay
-- If all charging bays are occupied, robot waits at nearest bay (queue)
+- Robot selects the **nearest** charging bay
 
 #### Decision Logic (runs when IDLE, battery ≥ threshold)
 
-1. Query NeedQueue for unclaimed needs **matching this robot's served types**
-2. Select the **nearest** matching need (by Manhattan distance)
-3. Claim the need
-4. Transition to `MOVING_TO_PATIENT`
+1. If **inventory is depleted** (item count = 0), navigate to nearest NURSE_STATION to refill
+2. Otherwise query NeedQueue for unclaimed needs **matching this robot's served types**
+3. Select the **nearest** matching need (by Manhattan distance)
+4. Claim the need
+5. Transition to `MOVING_TO_PATIENT`
 
 #### Robot Type Specifics
 
-| Robot | Serves Need Types | Service Time (ticks) | Fleet Size (default) | Special Behaviour |
-|-------|-------------------|---------------------|---------------------|-------------------|
-| **MEDi** | Medication | 3–4 | 2 | None |
-| **BLANKi** | Comfort | 1–2 | 2 | None |
-| **EDi** | Visitor Escort | 2–3 (escort) + 20–60 (accompanying) | 2 | After escorting a visitor to a patient, EDi enters `ACCOMPANYING` state for 20–60 ticks (representing staying with the visitor). During this time, EDi is **unavailable** for new tasks. |
+| Robot | Serves Need Types | Service Time (ticks) | Fleet Size (default) | Inventory | Refill Station |
+|-------|-------------------|---------------------|---------------------|-----------|----------------|
+| **MEDi** | Medication | 3–4 | 2 | 4 medicine vials (`MEDI_ITEM_CAPACITY`) | Nearest NURSE_STATION |
+| **BLANKi** | Comfort | 1–2 | 2 | 15 blankets (`BLANKI_ITEM_CAPACITY`) | Nearest NURSE_STATION |
+| **EDi** | Visitor Escort | 2–3 | 2 | None (no physical items carried) | N/A |
+
+#### MEDi / BLANKi Inventory & Refilling
+
+- Each task consumes one item (one medicine vial for MEDi, one blanket for BLANKi)
+- When `itemCount === 0`, the robot enters `MOVING_TO_REFILL` on its next decision tick
+- Refill time is calculated as: `itemCapacity × REFILL_TIME_PER_ITEM` ticks total
+- Inventory is fully restored (back to capacity) when `REFILLING` completes
+- If battery drops below threshold during `MOVING_TO_REFILL` or `REFILLING`, the robot aborts the refill and goes to charge instead
 
 #### EDi Special State
 
 ```
-IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → ACCOMPANYING → IDLE
-  │                                                                        │
-  └──── MOVING_TO_CHARGER → CHARGING ──────────────────────────────────────┘
+IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE
+  │                                                         │
+  └──── MOVING_TO_CHARGER → CHARGING ──────────────────────┘
 ```
 
 - When EDi claims a Visitor Escort need, it first moves to the **ENTRANCE** cell to "pick up" the visitor, then moves to the patient's bed
-- After the escort service time, EDi enters `ACCOMPANYING` for a random 20–60 ticks
-- During `ACCOMPANYING`, EDi stays at the patient's bed and cannot be assigned new tasks
-- This creates an important fleet-sizing dynamic — EDi units are occupied for long periods
+- After the escort service time completes, EDi transitions directly to `IDLE` — it does **not** linger at the patient's bed
+- EDi carries no physical items and has no refilling mechanic
 
 ---
 
@@ -250,11 +281,11 @@ Each simulation tick represents **30 seconds of real time** (configurable). Tick
 | Step | Phase | Description |
 |------|-------|-------------|
 | 1 | **Need Generation** | Each patient rolls for new needs (per-type probability check) |
-| 2 | **Robot Decisions** | All IDLE robots with sufficient battery scan NeedQueue, claim nearest matching need |
-| 3 | **Nurse Decisions** | All IDLE nurses scan NeedQueue, score unclaimed needs, claim highest-scoring |
-| 4 | **Movement** | All agents in a MOVING state advance one cell along their BFS path |
-| 5 | **Task Execution** | Agents in SERVING state decrement their remaining service time |
-| 6 | **State Transitions** | Completed tasks → agent returns to IDLE; fulfilled needs → patient health recovery; battery updates for robots |
+| 2 | **Robot Decisions** | All IDLE robots with sufficient battery: if inventory depleted → go to NURSE_STATION; otherwise scan NeedQueue, claim nearest matching need |
+| 3 | **Nurse Decisions** | All IDLE nurses: skip needs requiring items not in inventory; score unclaimed needs, claim highest-scoring; if no serviceable need and inventory has empty slots → go to NURSE_STATION to refill |
+| 4 | **Movement** | All agents in a MOVING state advance one cell along their BFS path; visitor_escort handlers (nurses and EDi) route via ENTRANCE before the patient's bed |
+| 5 | **Task Execution** | Agents in SERVING or REFILLING state decrement their respective countdown timers |
+| 6 | **State Transitions** | Completed tasks/refills → agent returns to IDLE; fulfilled needs → patient health recovery; battery updates for robots |
 | 7 | **Health Drain** | All patients with active unfulfilled needs lose health (rate by need type) |
 | 8 | **Stats Collection** | Record KPIs for this tick (see Section 6) |
 
@@ -293,7 +324,7 @@ Each simulation tick represents **30 seconds of real time** (configurable). Tick
 
 ### Experiment Design
 
-- **Simulation length:** 500 ticks per run (configurable) — represents ~4 hours of ward operation
+- **Simulation length:** 960 ticks per run (configurable) — represents one full 8-hour nursing shift (1 tick = 30 s)
 - **Warm-up period:** First 50 ticks discarded from statistics (allows the system to reach steady state)
 - **Replications:** Minimum 30 runs per scenario (different random seeds) for statistical significance
 - **Comparison method:** Welch's t-test on each KPI between Scenario A and Scenario B
@@ -313,7 +344,7 @@ export const CONFIG = {
 
   // Timing
   TICK_DURATION_MS: 200,       // Visual tick speed (rendering only)
-  TICKS_PER_RUN: 500,
+  TICKS_PER_RUN: 960,          // 960 ticks × 30s = 8-hour nursing shift
   WARM_UP_TICKS: 50,
   REAL_SECONDS_PER_TICK: 30,   // 1 tick = 30 seconds real time
 
@@ -361,17 +392,23 @@ export const CONFIG = {
     robot: {
       medication: [3, 4],     // MEDi
       comfort: [1, 2],        // BLANKi
-      visitor_escort: [2, 3], // EDi (escort portion only)
+      visitor_escort: [2, 3], // EDi (escort + hand-off; no accompanying phase)
     },
   },
 
-  // EDi accompanying time [min, max] in ticks
-  EDI_ACCOMPANYING_TIME: [20, 60],
+  // Item capacities
+  NURSE_ITEM_CAPACITY: 2,    // Total items (medicine + blankets combined)
+  MEDI_ITEM_CAPACITY: 4,     // Medicine vials per MEDi load
+  BLANKI_ITEM_CAPACITY: 15,  // Blankets per BLANKi load
+
+  // Refilling times at NURSE_STATION
+  REFILL_TIME_PER_MEDICINE: 1,  // Ticks to restock one medicine vial
+  REFILL_TIME_PER_BLANKET: 1,   // Ticks to restock one blanket
 
   // Robot battery
   BATTERY_MAX: 100,
   BATTERY_DRAIN_MOVING: 0.5,
-  BATTERY_DRAIN_SERVING: 0.3,
+  BATTERY_DRAIN_SERVING: 0.1,  // Also applies during REFILLING
   BATTERY_DRAIN_IDLE: 0.1,
   BATTERY_LOW_THRESHOLD: 20,
   BATTERY_CHARGE_RATE: 2.0,
