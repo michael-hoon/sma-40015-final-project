@@ -9,13 +9,13 @@
  * position between the previous and current logical positions.
  */
 
-/** Agent fill colours (spec §9) */
+/** Agent fill colours — warm light clinical palette */
 const AGENT_FILL = {
-  patient: 0xffffff,
-  nurse:   0x2e7d32,
-  medi:    0x1565c0,
-  blanki:  0xef6c00,
-  edi:     0x7b1fa2,
+  patient: 0xFFFFFF,
+  nurse:   0x3F7E5A,
+  medi:    0x0D9488,
+  blanki:  0xD97706,
+  edi:     0x7C3AED,
 };
 
 /** Letter label per agent type */
@@ -27,18 +27,18 @@ const AGENT_LABEL = {
   edi:     'E',
 };
 
-/** Need dot colours (spec §9) */
+/** Need dot colours — muted clinical palette */
 const NEED_COLORS = {
-  emergency:      0xf44336,
-  medication:     0x2196f3,
-  comfort:        0xff9800,
-  visitor_escort: 0x9c27b0,
+  emergency:      0xEF4444,
+  medication:     0x0EA5E9,
+  comfort:        0xF59E0B,
+  visitor_escort: 0x8B5CF6,
 };
 
 /** Inventory bar colours — lighter tints of the item need colours */
 const INV_COLORS = {
-  medicine: 0x64b5f6,  // light blue (medication)
-  blanket:  0xffb74d,  // light orange (comfort)
+  medicine: 0x7DD3FC,  // sky-300 (medication)
+  blanket:  0xFCD34D,  // amber-300 (comfort)
 };
 
 const NEED_ORDER = ['emergency', 'medication', 'comfort', 'visitor_escort'];
@@ -120,7 +120,10 @@ export default class AgentSprites {
     const circle = new PIXI.Graphics();
     circle.circle(0, 0, radius).fill({ color: AGENT_FILL[type] });
     if (isPatient) {
-      circle.circle(0, 0, radius).stroke({ color: 0x555555, width: 1.5 });
+      circle.circle(0, 0, radius).stroke({ color: 0xD6D3D1, width: 1.5 });
+    } else {
+      // Subtle white outer stroke for contrast on light background
+      circle.circle(0, 0, radius).stroke({ color: 0xFFFFFF, width: 1, alpha: 0.9 });
     }
     cont.addChild(circle);
 
@@ -130,6 +133,7 @@ export default class AgentSprites {
       const label = new PIXI.Text({
         text: labelChar,
         style: {
+          fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif',
           fontSize: Math.max(8, Math.floor(cs * 0.38)),
           fontWeight: 'bold',
           fill: '#ffffff',
@@ -293,9 +297,9 @@ export default class AgentSprites {
     if (nurse.state === 'REFILLING') {
       // Neutral progress bar — allocation type is determined at arrival
       const frac = _refillProgress(nurse);
-      g.rect(startX, barY, totalW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+      g.rect(startX, barY, totalW, pipH).fill({ color: 0xE7E5E4, alpha: 0.9 });
       if (frac > 0) {
-        g.rect(startX, barY, totalW * frac, pipH).fill({ color: 0xaaaaaa });
+        g.rect(startX, barY, totalW * frac, pipH).fill({ color: 0xA8A29E });
       }
       return;
     }
@@ -308,7 +312,7 @@ export default class AgentSprites {
 
     items.forEach((color, i) => {
       const x = startX + i * (pipW + gap);
-      g.rect(x, barY, pipW, pipH).fill({ color: 0x222222, alpha: 0.65 });
+      g.rect(x, barY, pipW, pipH).fill({ color: 0xE7E5E4, alpha: 0.9 });
       if (color !== null) {
         g.rect(x, barY, pipW, pipH).fill({ color });
       }
@@ -332,12 +336,12 @@ export default class AgentSprites {
     const barY = -(cs * 0.50) - barH / 2;  // centred at top of cell
     const f = Math.max(0, Math.min(1, frac));
 
-    // Dark background track
-    g.rect(-barW / 2, barY, barW, barH).fill({ color: 0x222222, alpha: 0.65 });
+    // Light background track
+    g.rect(-barW / 2, barY, barW, barH).fill({ color: 0xE7E5E4, alpha: 0.9 });
 
     if (f > 0) {
-      // Use a lighter tint during refilling to signal "loading"
-      const color = isRefilling ? 0xaaaaaa : fillColor;
+      // Use a muted stone tint during refilling to signal "loading"
+      const color = isRefilling ? 0xA8A29E : fillColor;
       g.rect(-barW / 2, barY, barW * f, barH).fill({ color });
     }
   }

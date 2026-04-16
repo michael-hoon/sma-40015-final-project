@@ -5,6 +5,10 @@
 
 const MAX_POINTS = 200; // rolling window
 
+// Global Chart.js defaults — warm light clinical theme
+Chart.defaults.font.family = "'IBM Plex Sans', system-ui, sans-serif";
+Chart.defaults.color = '#57534E';
+
 export default class ChartManager {
   /**
    * @param {object} params
@@ -26,9 +30,9 @@ export default class ChartManager {
           {
             label: 'Avg Health',
             data: [],
-            borderColor: '#4caf50',
-            backgroundColor: 'rgba(76,175,80,0.08)',
-            tension: 0.3,
+            borderColor: '#0D9488',
+            backgroundColor: 'rgba(13,148,136,0.08)',
+            tension: 0.35,
             pointRadius: 0,
             borderWidth: 2,
             fill: true,
@@ -36,12 +40,12 @@ export default class ChartManager {
           {
             label: 'Lowest',
             data: [],
-            borderColor: '#f44336',
+            borderColor: '#EF4444',
             backgroundColor: 'transparent',
-            tension: 0.3,
+            tension: 0.35,
             pointRadius: 0,
             borderWidth: 1.5,
-            borderDash: [5, 3],
+            borderDash: [4, 4],
           },
         ],
       },
@@ -52,19 +56,21 @@ export default class ChartManager {
         interaction: { mode: 'index', intersect: false },
         scales: {
           x: {
-            ticks: { maxTicksLimit: 8, color: '#9ca3af', font: { size: 10 } },
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            border: { display: false },
+            ticks: { maxTicksLimit: 8, color: '#57534E', font: { size: 10 } },
+            grid: { color: '#E7E5E4' },
           },
           y: {
             min: 0,
             max: 100,
-            ticks: { color: '#9ca3af', font: { size: 10 } },
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            border: { display: false },
+            ticks: { color: '#57534E', font: { size: 10 } },
+            grid: { color: '#E7E5E4' },
           },
         },
         plugins: {
           legend: {
-            labels: { color: '#d1d5db', font: { size: 11 }, boxWidth: 14 },
+            labels: { color: '#1C1917', font: { size: 11 }, boxWidth: 12, usePointStyle: true },
           },
         },
       },
@@ -81,14 +87,9 @@ export default class ChartManager {
           {
             label: 'Active needs',
             data: [0, 0, 0, 0],
-            backgroundColor: [
-              'rgba(244,67,54,0.75)',
-              'rgba(33,150,243,0.75)',
-              'rgba(255,152,0,0.75)',
-              'rgba(156,39,176,0.75)',
-            ],
-            borderColor: ['#f44336', '#2196f3', '#ff9800', '#9c27b0'],
-            borderWidth: 1,
+            backgroundColor: ['#EF4444', '#0EA5E9', '#F59E0B', '#8B5CF6'],
+            borderRadius: 6,
+            borderSkipped: false,
           },
         ],
       },
@@ -98,13 +99,15 @@ export default class ChartManager {
         maintainAspectRatio: false,
         scales: {
           x: {
-            ticks: { color: '#9ca3af', font: { size: 10 } },
+            border: { display: false },
+            ticks: { color: '#57534E', font: { size: 10 } },
             grid: { display: false },
           },
           y: {
             min: 0,
-            ticks: { color: '#9ca3af', font: { size: 10 }, stepSize: 1 },
-            grid: { color: 'rgba(255,255,255,0.05)' },
+            border: { display: false },
+            ticks: { color: '#57534E', font: { size: 10 }, stepSize: 1 },
+            grid: { color: '#E7E5E4' },
           },
         },
         plugins: {

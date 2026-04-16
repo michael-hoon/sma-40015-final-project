@@ -82,7 +82,7 @@ export default class HealthBarRenderer {
       const px = (pos.prevPos.x + (pos.currPos.x - pos.prevPos.x) * t) * cs + cs / 2;
       const py = (pos.prevPos.y + (pos.currPos.y - pos.prevPos.y) * t) * cs + cs / 2;
       const frac = Math.max(0, Math.min(1, patient.health / 100));
-      const color = frac > 0.66 ? 0x4caf50 : frac > 0.33 ? 0xff9800 : 0xf44336;
+      const color = frac > 0.66 ? 0x3F7E5A : frac > 0.33 ? 0xF59E0B : 0xEF4444;
 
       this._drawBar(g, px, py - cs * 0.50, barW, barH, frac, color);
     }
@@ -95,7 +95,7 @@ export default class HealthBarRenderer {
       const px = (pos.prevPos.x + (pos.currPos.x - pos.prevPos.x) * t) * cs + cs / 2;
       const py = (pos.prevPos.y + (pos.currPos.y - pos.prevPos.y) * t) * cs + cs / 2;
       const frac = Math.max(0, Math.min(1, (robot.battery ?? 100) / 100));
-      const color = frac > 0.4 ? 0x4caf50 : frac > 0.2 ? 0xff9800 : 0xf44336;
+      const color = frac > 0.4 ? 0x3F7E5A : frac > 0.2 ? 0xF59E0B : 0xEF4444;
 
       this._drawBar(g, px, py + cs * 0.44, barW, barH, frac, color);
     }
@@ -107,8 +107,8 @@ export default class HealthBarRenderer {
     const x = cx - barW / 2;
     const y = cy - barH / 2;
 
-    // Dark background track
-    g.rect(x, y, barW, barH).fill({ color: 0x222222, alpha: 0.65 });
+    // Light background track
+    g.rect(x, y, barW, barH).fill({ color: 0xE7E5E4, alpha: 0.9 });
 
     // Coloured fill
     if (frac > 0) {

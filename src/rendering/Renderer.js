@@ -69,7 +69,7 @@ export default class Renderer {
     await this._app.init({
       width:           CONFIG.GRID_WIDTH  * CELL_SIZE,
       height:          CONFIG.GRID_HEIGHT * CELL_SIZE,
-      backgroundColor: 0x091220,
+      backgroundColor: 0xFAFAF9,
       antialias:       true,
       resolution:      window.devicePixelRatio || 1,
       autoDensity:     true,

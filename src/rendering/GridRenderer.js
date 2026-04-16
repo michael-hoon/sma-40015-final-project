@@ -4,14 +4,14 @@
  * Depends on PIXI being available as a global (loaded via CDN).
  */
 
-/** Hex fill colours per cell-type symbol (spec colour palette §9) */
+/** Hex fill colours per cell-type symbol — warm light clinical palette */
 const CELL_COLORS = {
-  '.': 0xf0f0f0,  // CORRIDOR — light grey
-  '#': 0x4a4a4a,  // WALL — dark grey
-  'B': 0xe8e8e8,  // BED — slightly darker grey (patients rendered on top)
-  'N': 0xc8e6c9,  // NURSE_STATION — light green
-  'C': 0xfff9c4,  // CHARGING_BAY — light yellow
-  'E': 0xbbdefb,  // ENTRANCE — light blue
+  '.': 0xF5F5F4,  // CORRIDOR — warm stone-100
+  '#': 0xA8A29E,  // WALL — stone-400
+  'B': 0xFFFFFF,  // BED — white (patients rendered on top)
+  'N': 0xD1FAE5,  // NURSE_STATION — emerald-100 mint
+  'C': 0xFEF9C3,  // CHARGING_BAY — yellow-100 cream
+  'E': 0xDBEAFE,  // ENTRANCE — blue-100 sky
 };
 
 export default class GridRenderer {
@@ -40,14 +40,14 @@ export default class GridRenderer {
     for (let y = 0; y < this.grid.height; y++) {
       for (let x = 0; x < this.grid.width; x++) {
         const cell = this.grid.layout[y][x];
-        const color = CELL_COLORS[cell] ?? 0x888888;
+        const color = CELL_COLORS[cell] ?? 0xD6D3D1;
         const px = x * cs;
         const py = y * cs;
 
         // Filled cell
         g.rect(px, py, cs, cs).fill({ color });
         // Subtle grid line
-        g.rect(px, py, cs, cs).stroke({ color: 0xbbbbbb, width: 0.5, alpha: 0.5 });
+        g.rect(px, py, cs, cs).stroke({ color: 0xE7E5E4, width: 0.5, alpha: 0.6 });
       }
     }
   }

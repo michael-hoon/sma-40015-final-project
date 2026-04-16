@@ -6,12 +6,13 @@
   <title>CGH Hospital Robot ABM</title>
 
   <!--
-    Fonts: Rajdhani (instrument labels) · DM Sans (body) · Fira Code (readouts)
-    These three are chosen to evoke a professional medical-monitoring aesthetic.
+    Fonts: Plus Jakarta Sans (headings/labels) · IBM Plex Sans (body) · JetBrains Mono (data)
+    Warm light clinical theme — Apple Health × Material Design 3 aesthetic.
   -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" />
 
   <!-- CDN libraries — no build step -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
@@ -19,33 +20,52 @@
 
   <style>
     /* ─────────────────────────────────────────────────────────────────────
-       Design tokens — clinical dark theme
+       Design tokens — warm light clinical theme
        ───────────────────────────────────────────────────────────────────── */
     :root {
-      --void:        #020810;
-      --base:        #060d1a;
-      --surface:     #091220;
-      --raised:      #0d1a2e;
-      --hover:       #122035;
-      --b-faint:     #0f1e30;
-      --b-sub:       #182c42;
-      --b-norm:      #1e3550;
-      --b-active:    #0077b6;
-      --text-hi:     #cde0f5;
-      --text-mid:    #4e7098;
-      --text-lo:     #213850;
-      --accent:      #00a8d0;
-      --accent-glow: rgba(0,168,208,0.18);
-      --accent-dim:  rgba(0,168,208,0.09);
-      --green:       #00d97e;
-      --green-dim:   rgba(0,217,126,0.09);
-      --amber:       #ffb300;
-      --amber-dim:   rgba(255,179,0,0.09);
-      --red:         #ff4444;
-      --red-dim:     rgba(255,68,68,0.09);
-      --blue:        #2196f3;
-      --orange:      #ff9800;
-      --purple:      #ab6fff;
+      /* Surfaces */
+      --bg:           #FAFAF9;
+      --surface:      #FFFFFF;
+      --surface-sunk: #F5F5F4;
+      --border-hair:  #E7E5E4;
+
+      /* Text */
+      --text-hi:  #1C1917;
+      --text-mid: #57534E;
+      --text-lo:  #A8A29E;
+
+      /* Primary accent — muted teal */
+      --accent:      #0D9488;
+      --accent-soft: #CCFBF1;
+      --accent-glow: rgba(13,148,136,0.12);
+      --accent-dim:  rgba(13,148,136,0.08);
+
+      /* Semantic colours */
+      --green:  #3F7E5A;
+      --amber:  #F59E0B;
+      --red:    #EF4444;
+      --coral:  #EF4444;
+
+      /* Agent/need palette */
+      --c-nurse:   #3F7E5A;
+      --c-medi:    #0D9488;
+      --c-blanki:  #D97706;
+      --c-edi:     #7C3AED;
+      --c-emerg:   #EF4444;
+      --c-med:     #0EA5E9;
+      --c-comfort: #F59E0B;
+      --c-visitor: #8B5CF6;
+
+      /* Elevation */
+      --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-lg: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+
+      /* Border radii */
+      --radius-sm:   8px;
+      --radius-md:   12px;
+      --radius-lg:   16px;
+      --radius-pill: 999px;
     }
 
     /* ─────────────────────────────────────────────────────────────────────
@@ -56,17 +76,17 @@
     html, body {
       height: 100%;
       overflow: hidden;
-      font-family: 'DM Sans', system-ui, sans-serif;
+      font-family: 'IBM Plex Sans', system-ui, sans-serif;
       font-size: 13px;
       color: var(--text-hi);
-      background: var(--base);
+      background: var(--bg);
       -webkit-font-smoothing: antialiased;
     }
 
-    ::-webkit-scrollbar            { width: 4px; height: 4px; }
-    ::-webkit-scrollbar-track      { background: var(--void); }
-    ::-webkit-scrollbar-thumb      { background: var(--b-norm); border-radius: 2px; }
-    ::-webkit-scrollbar-thumb:hover{ background: var(--b-active); }
+    ::-webkit-scrollbar            { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track      { background: var(--surface-sunk); }
+    ::-webkit-scrollbar-thumb      { background: var(--border-hair); border-radius: var(--radius-pill); }
+    ::-webkit-scrollbar-thumb:hover{ background: var(--text-lo); }
 
     /* Prevent Alpine FOUC */
     [x-cloak] { display: none !important; }
@@ -78,10 +98,7 @@
       display: flex;
       flex-direction: column;
       height: 100vh;
-      background:
-        radial-gradient(ellipse 1100px 500px at 50% 58%,
-          rgba(0,80,140,0.07) 0%, transparent 70%),
-        var(--base);
+      background: var(--bg);
     }
 
     /* ─────────────────────────────────────────────────────────────────────
@@ -89,48 +106,52 @@
        ───────────────────────────────────────────────────────────────────── */
     .hdr {
       flex-shrink: 0;
-      height: 44px;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 18px;
-      background: var(--void);
-      border-bottom: 1px solid var(--b-faint);
+      padding: 0 20px;
+      background: var(--surface);
+      box-shadow: var(--shadow-sm);
       gap: 16px;
+      z-index: 10;
     }
     .hdr-brand {
       display: flex;
-      align-items: baseline;
-      gap: 10px;
+      align-items: center;
+      gap: 12px;
+    }
+    .hdr-logo {
+      height: 32px;
+      width: auto;
+      object-fit: contain;
+      flex-shrink: 0;
     }
     .hdr-name {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 17px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 15px;
       font-weight: 700;
-      color: var(--accent);
-      letter-spacing: 0.04em;
+      color: var(--text-hi);
+      letter-spacing: -0.01em;
     }
     .hdr-sep {
       width: 1px;
-      height: 14px;
-      background: var(--b-norm);
+      height: 16px;
+      background: var(--border-hair);
       align-self: center;
     }
     .hdr-sub {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 11px;
-      font-weight: 500;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 400;
       color: var(--text-mid);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
     }
     .hdr-right {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
       font-weight: 500;
       color: var(--text-lo);
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     /* ─────────────────────────────────────────────────────────────────────
@@ -145,6 +166,29 @@
     }
 
     /* ─────────────────────────────────────────────────────────────────────
+       Card component — reused across all panels
+       ───────────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      padding: 14px 16px;
+      transition: box-shadow 0.15s;
+    }
+    .card:hover { box-shadow: var(--shadow-lg); }
+
+    /* Card section header */
+    .card-hdr {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--text-lo);
+      margin-bottom: 12px;
+    }
+
+    /* ─────────────────────────────────────────────────────────────────────
        Control panel — left column
        ───────────────────────────────────────────────────────────────────── */
     .ctrl {
@@ -152,63 +196,34 @@
       overflow-x: hidden;
       display: flex;
       flex-direction: column;
-      background: var(--surface);
-      border-right: 1px solid var(--b-faint);
-      /* Subtle blueprint grid */
-      background-image:
-        linear-gradient(var(--b-faint) 1px, transparent 1px),
-        linear-gradient(90deg, var(--b-faint) 1px, transparent 1px);
-      background-size: 24px 24px;
-      background-attachment: local;
-    }
-
-    .ctrl-sec {
-      padding: 13px 15px;
-      border-bottom: 1px solid var(--b-faint);
-      background: var(--surface); /* covers the grid texture in each section */
-    }
-
-    .sec-lbl {
-      display: flex;
-      align-items: center;
       gap: 8px;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
-      color: var(--text-lo);
-      margin-bottom: 11px;
-    }
-    .sec-lbl::after {
-      content: '';
-      flex: 1;
-      height: 1px;
-      background: var(--b-faint);
+      padding: 10px 8px;
+      background: var(--bg);
+      border-right: 1px solid var(--border-hair);
     }
 
-    /* ── Tick / status ─────────────────────────────────────────────── */
+    /* ── Tick / status readout ───────────────────────────────────────── */
     .tick-row {
       display: flex;
       align-items: flex-start;
       justify-content: space-between;
-      margin-bottom: 7px;
+      margin-bottom: 10px;
     }
     .tick-num {
-      font-family: 'Fira Code', monospace;
-      font-size: 36px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 38px;
       font-weight: 500;
       color: var(--accent);
       line-height: 1;
-      letter-spacing: -0.01em;
+      letter-spacing: -0.02em;
       transition: color 0.3s;
     }
-    .tick-num.idle { color: var(--text-mid); }
+    .tick-num.idle { color: var(--border-hair); }
     .tick-denom {
-      font-family: 'Fira Code', monospace;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       color: var(--text-lo);
-      margin-top: 4px;
+      margin-top: 5px;
       line-height: 1.3;
     }
 
@@ -216,66 +231,68 @@
       display: inline-flex;
       align-items: center;
       gap: 5px;
-      padding: 3px 8px;
-      border-radius: 3px;
-      font-family: 'Rajdhani', sans-serif;
+      padding: 4px 10px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.11em;
+      font-weight: 700;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      border: 1px solid var(--b-norm);
-      color: var(--text-mid);
+      background: var(--surface-sunk);
+      color: var(--text-lo);
     }
-    .status-pill.live     { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
-    .status-pill.done     { border-color: var(--green);  color: var(--green);  background: var(--green-dim); }
-    .status-pill.init     { border-color: var(--b-sub);  color: var(--text-lo); }
+    .status-pill.live { background: var(--accent-soft); color: var(--accent); }
+    .status-pill.done { background: #DCFCE7; color: var(--green); }
+    .status-pill.init { background: var(--surface-sunk); color: var(--text-lo); }
     .s-dot {
       width: 5px; height: 5px;
       border-radius: 50%;
       background: currentColor;
     }
-    .status-pill.live .s-dot { animation: blink 1.2s ease-in-out infinite; }
+    .status-pill.live .s-dot { animation: blink 1.4s ease-in-out infinite; }
 
     .prog-track {
-      height: 2px;
-      background: var(--b-sub);
-      border-radius: 1px;
+      height: 4px;
+      background: var(--surface-sunk);
+      border-radius: var(--radius-pill);
       overflow: hidden;
     }
     .prog-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--accent), rgba(0,168,208,0.4));
-      border-radius: 1px;
+      background: var(--accent);
+      border-radius: var(--radius-pill);
       transition: width 0.22s linear;
     }
 
-    /* ── Transport buttons ─────────────────────────────────────────── */
+    /* ── Transport buttons ───────────────────────────────────────────── */
     .btn-play {
       width: 100%;
-      height: 46px;
+      height: 48px;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 9px;
-      border-radius: 6px;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 14px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 13px;
       font-weight: 700;
-      letter-spacing: 0.13em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.15s, box-shadow 0.15s;
-      border: 1px solid var(--b-active);
-      background: var(--accent-dim);
-      color: var(--accent);
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+      border: none;
+      background: var(--accent);
+      color: #FFFFFF;
       margin-bottom: 8px;
     }
     .btn-play:not(:disabled):hover {
-      background: rgba(0,168,208,0.18);
-      box-shadow: 0 0 18px rgba(0,168,208,0.22);
+      background: #0F766E;
+      box-shadow: 0 4px 14px rgba(13,148,136,0.30);
+      transform: translateY(-1px);
     }
+    .btn-play:not(:disabled):active { transform: translateY(0); }
     .btn-play.is-live  { animation: glow-pulse 2.4s ease-in-out infinite; }
-    .btn-play:disabled { opacity: 0.32; cursor: not-allowed; }
+    .btn-play:disabled { opacity: 0.35; cursor: not-allowed; }
 
     .btn-2col {
       display: grid;
@@ -283,153 +300,206 @@
       gap: 7px;
     }
     .btn-sm {
-      height: 34px;
+      height: 36px;
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 5px;
-      border-radius: 5px;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 12px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.09em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      transition: background 0.12s, border-color 0.12s, color 0.12s;
-      border: 1px solid var(--b-norm);
-      background: transparent;
+      transition: background 0.12s, box-shadow 0.12s, transform 0.1s;
+      border: 1.5px solid var(--border-hair);
+      background: var(--surface);
       color: var(--text-mid);
     }
     .btn-sm:not(:disabled):hover {
-      background: var(--hover);
-      border-color: var(--b-active);
+      background: var(--surface-sunk);
+      border-color: var(--text-lo);
       color: var(--text-hi);
+      transform: translateY(-1px);
     }
-    .btn-sm:disabled { opacity: 0.32; cursor: not-allowed; }
+    .btn-sm:not(:disabled):active { transform: translateY(0); }
+    .btn-sm:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    /* ── Scenario segment control ──────────────────────────────────── */
+    /* ── Scenario segment control ────────────────────────────────────── */
     .seg {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 3px;
       padding: 3px;
-      background: var(--void);
-      border: 1px solid var(--b-sub);
-      border-radius: 6px;
-      margin-bottom: 8px;
+      background: var(--surface-sunk);
+      border-radius: var(--radius-pill);
+      margin-bottom: 10px;
     }
     .seg-btn {
-      padding: 7px 4px;
-      border-radius: 4px;
-      font-family: 'Rajdhani', sans-serif;
+      padding: 8px 4px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 600;
-      letter-spacing: 0.07em;
-      text-transform: uppercase;
+      letter-spacing: 0.04em;
       text-align: center;
       cursor: pointer;
       transition: all 0.15s;
-      border: 1px solid transparent;
+      border: none;
       color: var(--text-mid);
       background: transparent;
     }
-    .seg-btn.on  { background: var(--accent-dim); border-color: var(--b-active); color: var(--accent); }
-    .seg-btn:not(.on):hover { background: var(--hover); color: var(--text-hi); }
+    .seg-btn.on  {
+      background: var(--surface);
+      color: var(--accent);
+      box-shadow: var(--shadow-sm);
+    }
+    .seg-btn:not(.on):hover { color: var(--text-hi); }
 
     .scenario-hint {
-      font-size: 11px;
+      font-size: 11.5px;
       color: var(--text-lo);
-      line-height: 1.55;
-      min-height: 34px;
+      line-height: 1.6;
+      min-height: 36px;
     }
 
-    /* ── Form rows ─────────────────────────────────────────────────── */
+    /* ── Form rows ───────────────────────────────────────────────────── */
     .f-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 11px;
+      margin-bottom: 12px;
     }
     .f-lbl {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
+      gap: 7px;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
       color: var(--text-mid);
     }
-    .f-lbl-hint { font-size: 10px; color: var(--text-lo); text-transform: none; letter-spacing: 0; font-weight: 400; }
-    .f-val {
-      font-family: 'Fira Code', monospace;
-      font-size: 12px;
-      color: var(--text-hi);
+    .f-lbl-hint {
+      font-size: 10px;
+      color: var(--text-lo);
+      font-weight: 400;
     }
-    .f-val.accent { color: var(--accent); }
+    .f-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-hi);
+      background: var(--surface-sunk);
+      padding: 2px 8px;
+      border-radius: var(--radius-pill);
+      min-width: 28px;
+      text-align: center;
+    }
+    .f-val.accent { color: var(--accent); background: var(--accent-soft); }
 
-    .slider-wrap { margin-bottom: 13px; }
+    .slider-wrap { margin-bottom: 14px; }
     input[type="range"].slider {
       -webkit-appearance: none;
       appearance: none;
       display: block;
       width: 100%;
-      height: 3px;
-      background: var(--b-norm);
-      border-radius: 2px;
+      height: 6px;
+      background: var(--border-hair);
+      border-radius: var(--radius-pill);
       outline: none;
       cursor: pointer;
-      margin-top: 5px;
+      margin-top: 8px;
     }
     input[type="range"].slider::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 13px; height: 13px;
+      width: 18px; height: 18px;
       border-radius: 50%;
-      background: var(--accent);
+      background: var(--surface);
+      border: 2px solid var(--accent);
       cursor: pointer;
-      box-shadow: 0 0 0 2px var(--surface), 0 0 7px var(--accent-glow);
-      transition: box-shadow 0.12s;
+      box-shadow: var(--shadow-sm);
+      transition: box-shadow 0.12s, transform 0.1s;
     }
     input[type="range"].slider::-webkit-slider-thumb:hover {
-      box-shadow: 0 0 0 2px var(--surface), 0 0 14px rgba(0,168,208,0.5);
+      box-shadow: 0 0 0 4px var(--accent-glow);
+      transform: scale(1.1);
+    }
+    input[type="range"].slider::-moz-range-thumb {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--accent);
+      cursor: pointer;
     }
     /* Per-agent thumb colours */
-    input[type="range"].slider.c-green::-webkit-slider-thumb   { background: var(--green); }
-    input[type="range"].slider.c-blue::-webkit-slider-thumb    { background: var(--blue); }
-    input[type="range"].slider.c-orange::-webkit-slider-thumb  { background: var(--orange); }
-    input[type="range"].slider.c-purple::-webkit-slider-thumb  { background: var(--purple); }
+    input[type="range"].slider.c-green::-webkit-slider-thumb  { border-color: var(--c-nurse); }
+    input[type="range"].slider.c-blue::-webkit-slider-thumb   { border-color: var(--c-medi); }
+    input[type="range"].slider.c-orange::-webkit-slider-thumb { border-color: var(--c-blanki); }
+    input[type="range"].slider.c-purple::-webkit-slider-thumb { border-color: var(--c-edi); }
 
     .slider-ends {
       display: flex;
       justify-content: space-between;
-      margin-top: 3px;
-      font-size: 9px;
+      margin-top: 4px;
+      font-size: 9.5px;
       color: var(--text-lo);
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
+      font-family: 'IBM Plex Sans', sans-serif;
     }
 
     .seed-input {
-      width: 76px;
-      background: var(--void);
-      border: 1px solid var(--b-norm);
-      border-radius: 4px;
-      padding: 4px 8px;
-      font-family: 'Fira Code', monospace;
+      width: 80px;
+      background: var(--surface-sunk);
+      border: 1.5px solid var(--border-hair);
+      border-radius: var(--radius-sm);
+      padding: 5px 10px;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       color: var(--text-hi);
       text-align: right;
       outline: none;
-      transition: border-color 0.12s;
+      transition: border-color 0.12s, box-shadow 0.12s;
     }
-    .seed-input:focus { border-color: var(--b-active); }
+    .seed-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
 
     /* Colour swatch dot */
     .swatch {
-      width: 7px; height: 7px;
+      width: 8px; height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
     }
+
+    /* ── Experiment button ───────────────────────────────────────────── */
+    .btn-exp {
+      width: 100%;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
+      border: 1.5px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+    }
+    .btn-exp:not(:disabled):hover {
+      background: var(--accent-soft);
+      box-shadow: 0 2px 8px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+    .btn-exp:not(:disabled):active { transform: translateY(0); }
+    .btn-exp:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* ─────────────────────────────────────────────────────────────────────
        Canvas section — center column
@@ -438,41 +508,38 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: var(--base);
+      background: var(--bg);
     }
 
     .canvas-shell {
       position: relative;
-      border: 1px solid var(--b-sub);
-      border-radius: 4px;
+      border-radius: var(--radius-md);
       overflow: hidden;
-      box-shadow:
-        0 0 0 1px var(--b-faint),
-        0 8px 40px rgba(0,0,0,0.55),
-        0 0 80px rgba(0,0,0,0.3);
+      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-hair);
     }
 
     /* Tick counter overlaid on top-left of canvas */
     .canvas-hud {
       position: absolute;
-      top: 8px; left: 9px;
-      background: rgba(2,8,16,0.82);
-      border: 1px solid var(--b-sub);
-      border-radius: 3px;
-      padding: 2px 8px;
-      font-family: 'Fira Code', monospace;
+      top: 10px; left: 10px;
+      background: rgba(255,255,255,0.88);
+      border-radius: var(--radius-pill);
+      padding: 3px 10px;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
-      color: var(--accent);
+      font-weight: 500;
+      color: var(--text-mid);
       pointer-events: none;
-      backdrop-filter: blur(3px);
+      backdrop-filter: blur(4px);
+      box-shadow: var(--shadow-sm);
     }
 
     /* Progress bar at canvas bottom edge */
     .canvas-prog {
       position: absolute;
       bottom: 0; left: 0; right: 0;
-      height: 2px;
-      background: var(--b-faint);
+      height: 3px;
+      background: rgba(231,229,228,0.7);
     }
     .canvas-prog-fill {
       height: 100%;
@@ -488,24 +555,24 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 14px;
+      gap: 16px;
       background: var(--surface);
-      border: 1px solid var(--b-sub);
-      border-radius: 4px;
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md), 0 0 0 1px var(--border-hair);
     }
     .loading-label {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 12px;
       font-weight: 600;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.10em;
       text-transform: uppercase;
-      color: var(--text-mid);
+      color: var(--text-lo);
     }
     .loading-dots { display: flex; gap: 7px; }
     .ld {
-      width: 6px; height: 6px;
+      width: 7px; height: 7px;
       border-radius: 50%;
-      background: var(--b-norm);
+      background: var(--border-hair);
       animation: ldpulse 1.5s ease-in-out infinite;
     }
     .ld:nth-child(2) { animation-delay: 0.22s; }
@@ -517,94 +584,114 @@
     .charts-col {
       overflow-y: auto;
       overflow-x: hidden;
-      background: var(--surface);
-      border-left: 1px solid var(--b-faint);
+      background: var(--bg);
+      border-left: 1px solid var(--border-hair);
       display: flex;
       flex-direction: column;
+      gap: 8px;
+      padding: 10px 8px;
     }
 
-    .ch-sec {
-      padding: 12px 14px;
-      border-bottom: 1px solid var(--b-faint);
-      flex-shrink: 0;
-    }
-
-    /* ── KPI cards ─────────────────────────────────────────────────── */
+    /* ── KPI cards — Apple Health style ──────────────────────────────── */
     .kpi-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
+      gap: 8px;
     }
     .kpi-card {
-      background: var(--raised);
-      border: 1px solid var(--b-faint);
-      border-radius: 5px;
-      padding: 9px 11px;
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      padding: 12px 14px;
+      box-shadow: var(--shadow-md);
+      transition: box-shadow 0.15s;
     }
+    .kpi-card:hover { box-shadow: var(--shadow-lg); }
     .kpi-val {
-      font-family: 'Fira Code', monospace;
-      font-size: 22px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px;
       font-weight: 500;
       line-height: 1.1;
+      color: var(--text-hi);
     }
     .kpi-val.good   { color: var(--green); }
     .kpi-val.warn   { color: var(--amber); }
-    .kpi-val.crit   { color: var(--red); }
+    .kpi-val.crit   { color: var(--coral); }
     .kpi-val.accent { color: var(--accent); }
     .kpi-val.dim    { color: var(--text-lo); }
     .kpi-lbl {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 9.5px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--text-lo);
-      margin-top: 3px;
+      margin-top: 4px;
     }
 
-    /* ── Active needs strip ────────────────────────────────────────── */
+    /* ── Active needs strip ──────────────────────────────────────────── */
     .needs-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 5px;
+      gap: 6px;
     }
     .need-chip {
-      background: var(--raised);
-      border: 1px solid var(--b-faint);
-      border-radius: 4px;
-      padding: 5px 4px;
+      background: var(--surface);
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-sm);
+      padding: 8px 4px;
       text-align: center;
+      transition: box-shadow 0.15s;
     }
+    .need-chip:hover { box-shadow: var(--shadow-md); }
     .need-n {
-      font-family: 'Fira Code', monospace;
-      font-size: 17px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
       font-weight: 500;
       line-height: 1.2;
     }
     .need-t {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
+      font-weight: 500;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       color: var(--text-lo);
+      margin-top: 2px;
     }
 
-    /* ── Legend ────────────────────────────────────────────────────── */
+    /* ── Chart wrapper cards ─────────────────────────────────────────── */
+    .chart-card {
+      background: var(--surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      padding: 14px 16px;
+    }
+    .chart-title {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-mid);
+      margin-bottom: 10px;
+    }
+
+    /* ── Legend ──────────────────────────────────────────────────────── */
     .legend-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 5px 10px;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 6px 10px;
     }
     .legend-item {
       display: flex;
       align-items: center;
       gap: 7px;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
       color: var(--text-mid);
     }
     .l-dot {
-      width: 8px; height: 8px;
+      width: 9px; height: 9px;
       border-radius: 50%;
       flex-shrink: 0;
     }
@@ -612,38 +699,9 @@
       grid-column: 1 / -1;
       font-size: 10px;
       color: var(--text-lo);
-      line-height: 1.55;
-      margin-top: 4px;
+      line-height: 1.6;
+      margin-top: 6px;
     }
-
-    /* ─────────────────────────────────────────────────────────────────────
-       Experiment button
-       ───────────────────────────────────────────────────────────────────── */
-    .btn-exp {
-      width: 100%;
-      height: 38px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      border-radius: 5px;
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      cursor: pointer;
-      transition: background 0.15s, border-color 0.15s, color 0.15s;
-      border: 1px solid var(--b-norm);
-      background: transparent;
-      color: var(--text-mid);
-    }
-    .btn-exp:not(:disabled):hover {
-      background: var(--green-dim);
-      border-color: var(--green);
-      color: var(--green);
-    }
-    .btn-exp:disabled { opacity: 0.32; cursor: not-allowed; }
 
     /* ─────────────────────────────────────────────────────────────────────
        Experiment modal
@@ -652,8 +710,8 @@
       position: fixed;
       inset: 0;
       z-index: 100;
-      background: rgba(2,8,16,0.88);
-      backdrop-filter: blur(4px);
+      background: rgba(250,250,249,0.72);
+      backdrop-filter: blur(8px);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -663,11 +721,10 @@
       width: min(860px, 96vw);
       max-height: 90vh;
       background: var(--surface);
-      border: 1px solid var(--b-norm);
-      border-radius: 8px;
+      border-radius: var(--radius-lg);
       display: flex;
       flex-direction: column;
-      box-shadow: 0 24px 80px rgba(0,0,0,0.7), 0 0 0 1px var(--b-faint);
+      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-hair);
       overflow: hidden;
     }
 
@@ -676,22 +733,20 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 18px;
-      border-bottom: 1px solid var(--b-faint);
-      background: var(--void);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-hair);
+      background: var(--surface);
     }
     .exp-title {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 13px;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 14px;
       font-weight: 700;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
       color: var(--text-hi);
     }
     .exp-close {
-      width: 26px; height: 26px;
-      border: 1px solid var(--b-norm);
-      border-radius: 4px;
+      width: 28px; height: 28px;
+      border: 1.5px solid var(--border-hair);
+      border-radius: var(--radius-pill);
       background: transparent;
       color: var(--text-mid);
       cursor: pointer;
@@ -699,12 +754,12 @@
       font-size: 14px;
       transition: background 0.12s, color 0.12s;
     }
-    .exp-close:hover { background: var(--hover); color: var(--text-hi); }
+    .exp-close:hover { background: var(--surface-sunk); color: var(--text-hi); }
 
     .exp-body {
       flex: 1;
       overflow-y: auto;
-      padding: 18px;
+      padding: 20px;
     }
 
     /* Progress area */
@@ -717,15 +772,13 @@
       padding: 32px 0;
     }
     .exp-prog-label {
-      font-family: 'Rajdhani', sans-serif;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: var(--text-mid);
+      font-weight: 500;
+      color: var(--text-lo);
     }
     .exp-prog-status {
-      font-family: 'Fira Code', monospace;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       color: var(--accent);
       min-height: 18px;
@@ -733,74 +786,73 @@
     .exp-prog-track {
       width: 100%;
       max-width: 480px;
-      height: 4px;
-      background: var(--b-sub);
-      border-radius: 2px;
+      height: 6px;
+      background: var(--surface-sunk);
+      border-radius: var(--radius-pill);
       overflow: hidden;
     }
     .exp-prog-fill {
       height: 100%;
       background: linear-gradient(90deg, var(--accent), var(--green));
-      border-radius: 2px;
+      border-radius: var(--radius-pill);
       transition: width 0.2s linear;
     }
     .exp-prog-frac {
-      font-family: 'Fira Code', monospace;
-      font-size: 24px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px;
       font-weight: 500;
       color: var(--accent);
     }
 
     /* Results table */
-    .exp-table-wrap {
-      overflow-x: auto;
-    }
+    .exp-table-wrap { overflow-x: auto; }
     .exp-table {
       width: 100%;
       border-collapse: collapse;
+      font-family: 'JetBrains Mono', monospace;
       font-size: 11.5px;
     }
     .exp-table th {
-      font-family: 'Rajdhani', sans-serif;
-      font-size: 9.5px;
-      font-weight: 600;
-      letter-spacing: 0.12em;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
       text-transform: uppercase;
       color: var(--text-lo);
-      padding: 6px 10px;
-      border-bottom: 1px solid var(--b-faint);
+      padding: 8px 10px;
+      border-bottom: 1.5px solid var(--border-hair);
       text-align: right;
       white-space: nowrap;
     }
     .exp-table th:first-child { text-align: left; }
     .exp-table td {
-      padding: 7px 10px;
-      border-bottom: 1px solid var(--b-faint);
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-hair);
       text-align: right;
       color: var(--text-mid);
-      font-family: 'Fira Code', monospace;
       font-size: 11px;
       white-space: nowrap;
     }
     .exp-table td:first-child {
       text-align: left;
-      font-family: 'DM Sans', sans-serif;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 12px;
       color: var(--text-hi);
     }
     .exp-table tr:last-child td { border-bottom: none; }
-    .exp-table tr:hover td { background: var(--raised); }
+    .exp-table tr:hover td { background: var(--surface-sunk); }
 
     .exp-table .sig-yes { color: var(--green); }
     .exp-table .sig-no  { color: var(--text-lo); }
-    .exp-table .stars   { color: var(--amber); font-family: 'DM Sans', sans-serif; }
+    .exp-table .stars   { color: var(--amber); font-family: 'IBM Plex Sans', sans-serif; }
 
     /* Scenario column headers */
     .exp-table .col-a { color: var(--accent); }
     .exp-table .col-b { color: var(--green); }
 
     .exp-table-note {
-      margin-top: 10px;
+      margin-top: 12px;
+      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 10px;
       color: var(--text-lo);
       line-height: 1.6;
@@ -813,41 +865,41 @@
       align-items: center;
       justify-content: flex-end;
       gap: 8px;
-      padding: 12px 18px;
-      border-top: 1px solid var(--b-faint);
-      background: var(--void);
+      padding: 14px 20px;
+      border-top: 1px solid var(--border-hair);
+      background: var(--surface-sunk);
     }
     .btn-csv {
-      height: 34px;
-      padding: 0 16px;
-      border-radius: 4px;
-      font-family: 'Rajdhani', sans-serif;
+      height: 36px;
+      padding: 0 18px;
+      border-radius: var(--radius-pill);
+      font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 700;
-      letter-spacing: 0.1em;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      border: 1px solid var(--green);
-      background: var(--green-dim);
+      border: 1.5px solid var(--green);
+      background: #DCFCE7;
       color: var(--green);
-      transition: background 0.12s;
+      transition: background 0.12s, box-shadow 0.12s;
     }
-    .btn-csv:hover { background: rgba(0,217,126,0.18); }
+    .btn-csv:hover { background: #BBF7D0; box-shadow: 0 2px 8px rgba(63,126,90,0.20); }
 
     /* ─────────────────────────────────────────────────────────────────────
        Animations
        ───────────────────────────────────────────────────────────────────── */
     @keyframes blink {
       0%, 100% { opacity: 1; }
-      50%       { opacity: 0.2; }
+      50%       { opacity: 0.35; }
     }
     @keyframes glow-pulse {
-      0%, 100% { box-shadow: 0 0  6px rgba(0,168,208,0.18); }
-      50%       { box-shadow: 0 0 22px rgba(0,168,208,0.48); }
+      0%, 100% { box-shadow: 0 2px 8px rgba(13,148,136,0.18); }
+      50%       { box-shadow: 0 4px 20px rgba(13,148,136,0.42); }
     }
     @keyframes ldpulse {
-      0%, 80%, 100% { background: var(--b-norm); transform: scale(1); }
-      40%            { background: var(--accent);  transform: scale(1.3); }
+      0%, 80%, 100% { background: var(--border-hair); transform: scale(1); }
+      40%            { background: var(--accent);      transform: scale(1.35); }
     }
   </style>
 
@@ -989,11 +1041,15 @@
        ══════════════════════════════════════════════════════════════════════ -->
   <header class="hdr">
     <div class="hdr-brand">
-      <span class="hdr-name">CGH · ABM</span>
+      <img src="assets/images/sutd-logo.jpg" class="hdr-logo" alt="Singapore University of Technology and Design"
+        onerror="this.style.display='none'" />
+      <img src="assets/images/cgh-logo.png" class="hdr-logo" alt="Changi General Hospital"
+        onerror="this.style.display='none'" />
+      <span class="hdr-name">CGH · SUTD</span>
       <span class="hdr-sep"></span>
-      <span class="hdr-sub">Hospital Robot Simulation</span>
+      <span class="hdr-sub">Adaptive Coordination of Multi-Robot Fleets in Smart Hospital Logistics</span>
     </div>
-    <span class="hdr-right">SMA-40015 &nbsp;·&nbsp; Changi General Hospital</span>
+    <span class="hdr-right">40.015 Simulation Modelling and Analysis &nbsp;·&nbsp; Changi General Hospital</span>
   </header>
 
   <!-- ══════════════════════════════════════════════════════════════════════
@@ -1006,8 +1062,9 @@
          ════════════════════════════════════════════ -->
     <aside class="ctrl">
 
-      <!-- Status / tick readout -->
-      <div class="ctrl-sec">
+      <!-- Status card -->
+      <div class="card">
+        <div class="card-hdr">Status</div>
         <div class="tick-row">
           <div>
             <div class="tick-num" :class="{ idle: currentTick === 0 }" x-text="tickPadded"></div>
@@ -1023,15 +1080,37 @@
         </div>
       </div>
 
-      <!-- Playback controls -->
-      <div class="ctrl-sec">
-        <div class="sec-lbl">Playback</div>
+      <!-- Scenario card -->
+      <div class="card">
+        <div class="card-hdr">Scenario</div>
+        <div class="seg">
+          <button class="seg-btn" :class="{ on: scenario === 'A' }" @click="scenario = 'A'">
+            Nurses Only
+          </button>
+          <button class="seg-btn" :class="{ on: scenario === 'B' }" @click="scenario = 'B'">
+            + Robots
+          </button>
+        </div>
+        <p class="scenario-hint">
+          <span x-show="scenario === 'A'">
+            Scenario&nbsp;A — all patient needs are handled by nurses only.
+          </span>
+          <span x-show="scenario === 'B'">
+            Scenario&nbsp;B — robots offload non-emergency tasks so nurses focus on emergencies.
+          </span>
+        </p>
+      </div>
+      
+      <!-- Playback card -->
+      <div class="card">
+        <div class="card-hdr">Playback</div>
 
         <button
           class="btn-play"
           :class="{ 'is-live': isRunning }"
           :disabled="!rendererReady || isComplete"
           @click="isRunning ? doPause() : doPlay()"
+          title="Play / Pause simulation"
         >
           <span x-text="isRunning ? '⏸' : '▶'"></span>
           <span x-text="isRunning ? 'PAUSE' : (isComplete ? 'COMPLETE' : 'PLAY')"></span>
@@ -1048,36 +1127,14 @@
             class="btn-sm"
             :disabled="!rendererReady"
             @click="doReset()"
+            title="Reset simulation"
           >↺&nbsp;RESET</button>
         </div>
       </div>
 
-      <!-- Scenario -->
-      <div class="ctrl-sec">
-        <div class="sec-lbl">Scenario</div>
-
-        <div class="seg">
-          <button class="seg-btn" :class="{ on: scenario === 'A' }" @click="scenario = 'A'">
-            Nurses Only
-          </button>
-          <button class="seg-btn" :class="{ on: scenario === 'B' }" @click="scenario = 'B'">
-            + Robots
-          </button>
-        </div>
-
-        <p class="scenario-hint">
-          <span x-show="scenario === 'A'">
-            Scenario&nbsp;A — all patient needs are handled by nurses only.
-          </span>
-          <span x-show="scenario === 'B'">
-            Scenario&nbsp;B — robots offload non-emergency tasks so nurses focus on emergencies.
-          </span>
-        </p>
-      </div>
-
-      <!-- Simulation parameters -->
-      <div class="ctrl-sec">
-        <div class="sec-lbl">Parameters</div>
+      <!-- Staffing card -->
+      <div class="card">
+        <div class="card-hdr">Staffing</div>
 
         <!-- Seed -->
         <div class="f-row">
@@ -1098,18 +1155,18 @@
           </div>
           <input
             type="range" class="slider"
-            min="50" max="1000" step="50"
-            :value="1050 - tickDurationMs"
-            @input="setSpeed(1050 - +$event.target.value)"
+            min="1" max="20" step="1"
+            :value="ticksPerSec"
+            @input="setSpeed(Math.round(1000 / +$event.target.value))"
           />
-          <div class="slider-ends"><span>SLOW</span><span>FAST</span></div>
+          <div class="slider-ends"><span>Slow</span><span>Fast</span></div>
         </div>
 
         <!-- Nurse count -->
         <div class="slider-wrap" style="margin-bottom:0">
           <div class="f-row" style="margin-bottom:0">
             <span class="f-lbl">
-              <span class="swatch" style="background:#2e7d32"></span>
+              <span class="swatch" style="background:var(--c-nurse)"></span>
               Nurses
             </span>
             <span class="f-val" x-text="nurseCount"></span>
@@ -1123,14 +1180,14 @@
       </div>
 
       <!-- Robot fleet — only visible in Scenario B -->
-      <div class="ctrl-sec" x-show="scenario === 'B'" x-transition.opacity>
-        <div class="sec-lbl">Robot Fleet</div>
+      <div class="card" x-show="scenario === 'B'" x-transition.opacity>
+        <div class="card-hdr">Robot Fleet</div>
 
         <!-- MEDi -->
         <div class="slider-wrap">
           <div class="f-row" style="margin-bottom:0">
             <span class="f-lbl">
-              <span class="swatch" style="background:#1565c0"></span>
+              <span class="swatch" style="background:var(--c-medi)"></span>
               MEDi
               <span class="f-lbl-hint">medication</span>
             </span>
@@ -1147,7 +1204,7 @@
         <div class="slider-wrap">
           <div class="f-row" style="margin-bottom:0">
             <span class="f-lbl">
-              <span class="swatch" style="background:#ef6c00"></span>
+              <span class="swatch" style="background:var(--c-blanki)"></span>
               BLANKi
               <span class="f-lbl-hint">comfort</span>
             </span>
@@ -1164,7 +1221,7 @@
         <div class="slider-wrap" style="margin-bottom:0">
           <div class="f-row" style="margin-bottom:0">
             <span class="f-lbl">
-              <span class="swatch" style="background:#7b1fa2"></span>
+              <span class="swatch" style="background:var(--c-edi)"></span>
               EDi
               <span class="f-lbl-hint">visitor escort</span>
             </span>
@@ -1178,10 +1235,10 @@
         </div>
       </div>
 
-      <!-- Experiment -->
-      <div class="ctrl-sec">
-        <div class="sec-lbl">Experiment</div>
-        <p style="font-size:11px;color:var(--text-lo);line-height:1.55;margin-bottom:11px">
+      <!-- Experiment card -->
+      <div class="card">
+        <div class="card-hdr">Experiment</div>
+        <p style="font-size:11.5px;color:var(--text-lo);line-height:1.6;margin-bottom:12px">
           Run 30 replications of each scenario (seeds 1–30) and compare KPIs with Welch's t-test.
         </p>
         <button
@@ -1191,8 +1248,8 @@
         >⚗ Run Experiment</button>
       </div>
 
-      <!-- Bottom spacer so last section doesn't clip -->
-      <div style="height:12px;flex-shrink:0"></div>
+      <!-- Bottom spacer -->
+      <div style="height:4px;flex-shrink:0"></div>
     </aside>
 
     <!-- ════════════════════════════════════════════
@@ -1226,112 +1283,106 @@
          ════════════════════════════════════════════ -->
     <aside class="charts-col">
 
-      <!-- Live KPI cards -->
-      <div class="ch-sec">
-        <div class="sec-lbl">Live KPIs</div>
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <div class="kpi-val" :class="critClass" x-text="criticalIncidents"></div>
-            <div class="kpi-lbl">Critical Incidents</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-val" :class="healthClass" x-text="avgHealth.toFixed(1)"></div>
-            <div class="kpi-lbl">Avg Patient Health</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-val good" x-text="(nurseUtil * 100).toFixed(0) + '%'"></div>
-            <div class="kpi-lbl">Nurse Utilisation</div>
-          </div>
-          <div class="kpi-card">
-            <div
-              class="kpi-val"
-              :class="scenario === 'B' ? 'accent' : 'dim'"
-              x-text="scenario === 'B' ? (robotUtil * 100).toFixed(0) + '%' : '—'"
-            ></div>
-            <div class="kpi-lbl">Robot Utilisation</div>
-          </div>
+      <!-- Live KPI cards — Apple Health style -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-val" :class="critClass" x-text="criticalIncidents"></div>
+          <div class="kpi-lbl">Critical Incidents</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" :class="healthClass" x-text="avgHealth.toFixed(1)"></div>
+          <div class="kpi-lbl">Avg Patient Health</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val good" x-text="(nurseUtil * 100).toFixed(0) + '%'"></div>
+          <div class="kpi-lbl">Nurse Utilisation</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" :class="scenario === 'B' ? 'accent' : 'dim'"
+            x-text="scenario === 'B' ? (robotUtil * 100).toFixed(0) + '%' : '—'"></div>
+          <div class="kpi-lbl">Robot Utilisation</div>
         </div>
       </div>
 
       <!-- Active need counts -->
-      <div class="ch-sec">
-        <div class="sec-lbl">Active Needs</div>
+      <div class="card" style="padding:14px 16px">
+        <div class="card-hdr">Active Needs</div>
         <div class="needs-row">
           <div class="need-chip">
-            <div class="need-n" style="color:var(--red)"    x-text="activeNeeds.emergency"></div>
+            <div class="need-n" style="color:var(--c-emerg)" x-text="activeNeeds.emergency"></div>
             <div class="need-t">Emerg.</div>
           </div>
           <div class="need-chip">
-            <div class="need-n" style="color:var(--blue)"   x-text="activeNeeds.medication"></div>
+            <div class="need-n" style="color:var(--c-med)" x-text="activeNeeds.medication"></div>
             <div class="need-t">Meds</div>
           </div>
           <div class="need-chip">
-            <div class="need-n" style="color:var(--orange)" x-text="activeNeeds.comfort"></div>
+            <div class="need-n" style="color:var(--c-comfort)" x-text="activeNeeds.comfort"></div>
             <div class="need-t">Comfort</div>
           </div>
           <div class="need-chip">
-            <div class="need-n" style="color:var(--purple)" x-text="activeNeeds.visitor_escort"></div>
+            <div class="need-n" style="color:var(--c-visitor)" x-text="activeNeeds.visitor_escort"></div>
             <div class="need-t">Visitor</div>
           </div>
         </div>
       </div>
 
       <!-- Patient health chart -->
-      <div class="ch-sec">
-        <div class="sec-lbl">Patient Health</div>
+      <div class="chart-card">
+        <div class="chart-title">Patient Health</div>
         <div style="height:132px;position:relative">
           <canvas id="health-chart"></canvas>
         </div>
       </div>
 
       <!-- Need queue chart -->
-      <div class="ch-sec">
-        <div class="sec-lbl">Need Queue</div>
+      <div class="chart-card">
+        <div class="chart-title">Need Queue</div>
         <div style="height:110px;position:relative">
           <canvas id="needs-chart"></canvas>
         </div>
       </div>
 
       <!-- Legend -->
-      <div class="ch-sec">
-        <div class="sec-lbl">Legend</div>
+      <div class="chart-card">
+        <div class="chart-title">Legend</div>
         <div class="legend-grid">
           <div class="legend-item">
-            <span class="l-dot" style="background:#fff;border:1px solid #555"></span>Patient
+            <span class="l-dot" style="background:#fff;border:1.5px solid var(--border-hair)"></span>Patient
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#2e7d32"></span>Nurse
+            <span class="l-dot" style="background:var(--c-nurse)"></span>Nurse
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#1565c0"></span>MEDi robot
+            <span class="l-dot" style="background:var(--c-medi)"></span>MEDi robot
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#ef6c00"></span>BLANKi robot
+            <span class="l-dot" style="background:var(--c-blanki)"></span>BLANKi robot
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#7b1fa2"></span>EDi robot
+            <span class="l-dot" style="background:var(--c-edi)"></span>EDi robot
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#f44336"></span>Emergency
+            <span class="l-dot" style="background:var(--c-emerg)"></span>Emergency
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#2196f3"></span>Medication
+            <span class="l-dot" style="background:var(--c-med)"></span>Medication
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#ff9800"></span>Comfort
+            <span class="l-dot" style="background:var(--c-comfort)"></span>Comfort
           </div>
           <div class="legend-item">
-            <span class="l-dot" style="background:#9c27b0"></span>Visitor escort
+            <span class="l-dot" style="background:var(--c-visitor)"></span>Visitor escort
           </div>
-          <div class="legend-item" style="grid-column:1/-1;color:var(--text-lo);font-size:10px">
-            Bar&nbsp;above&nbsp;patient&nbsp;=&nbsp;health &nbsp;·&nbsp;
-            Bar&nbsp;below&nbsp;robot&nbsp;=&nbsp;battery &nbsp;·&nbsp;
-            Dim&nbsp;dot&nbsp;=&nbsp;claimed&nbsp;need
-          </div>
+          <p class="legend-note">
+            Bar above patient = health &nbsp;·&nbsp;
+            Bar below robot = battery &nbsp;·&nbsp;
+            Dim dot = claimed need
+          </p>
         </div>
       </div>
 
-      <div style="height:12px;flex-shrink:0"></div>
+      <div style="height:4px;flex-shrink:0"></div>
     </aside>
 
   </div><!-- .cols -->
@@ -1354,7 +1405,8 @@
         <!-- ── Idle state: start prompt ─────────────────────────────────── -->
         <template x-if="!expRunning && !expDone">
           <div style="padding:24px 0;text-align:center">
-            <p style="color:var(--text-mid);font-size:13px;line-height:1.7;margin-bottom:20px">
+            <p
+              style="color:var(--text-mid);font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.7;margin-bottom:20px">
               Runs <strong style="color:var(--accent)">30 replications</strong> of Scenario A (nurses only)
               and <strong style="color:var(--green)">30 replications</strong> of Scenario B (nurses + robots),
               then compares each KPI using <strong style="color:var(--text-hi)">Welch's t-test</strong>.
@@ -1382,7 +1434,8 @@
         <!-- ── Done state: results table ───────────────────────────────── -->
         <template x-if="expDone && expResults">
           <div>
-            <p style="font-size:11px;color:var(--text-lo);margin-bottom:14px" x-text="expStatus"></p>
+            <p style="font-family:'IBM Plex Sans',sans-serif;font-size:11px;color:var(--text-lo);margin-bottom:14px"
+              x-text="expStatus"></p>
 
             <div class="exp-table-wrap">
               <table class="exp-table">
@@ -1444,7 +1497,7 @@
           </button>
         </template>
         <button class="btn-sm" :disabled="expRunning" @click="closeExperiment()"
-                style="padding:0 16px;height:34px">
+                style="padding:0 16px;height:36px">
           Close
         </button>
       </div>
