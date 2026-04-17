@@ -10,7 +10,7 @@ An agent-based simulation comparing nurse-only versus nurse-plus-robot staffing 
 
 In July 2023, Changi General Hospital deployed three autonomous mobile robots — **MEDi** (medication transport), **BLANKi** (comfort items), and **EDi** (visitor escort) — in its Emergency Department as part of its broader 80+ robot fleet. The core hypothesis is that robots offloading non-clinical tasks free nurses to focus on emergencies, reducing critical incidents and improving response times.
 
-This simulation tests that hypothesis by running a discrete-event ABM of a 32-bed ward under two conditions: **Scenario A** (nurses only) and **Scenario B** (same nurses plus a configurable robot fleet). Patient outcomes are compared across 30 statistically independent replications using Welch's t-test.
+This simulation tests that hypothesis by running a discrete-event ABM of a 48-bed ward under two conditions: **Scenario A** (nurses only) and **Scenario B** (same nurses plus a configurable robot fleet). Patient outcomes are compared across 30 statistically independent replications using Welch's t-test.
 
 ---
 
@@ -46,11 +46,11 @@ No npm, no build step, no installation. All libraries load from CDN on first ope
 | **Seed input** | Integer seed for the PRNG. Two runs with the same seed and settings are identical. |
 | **Run Experiment** | Opens the batch experiment modal (see below). |
 
-The tick counter in the top-left of the panel shows the current tick (`0000`–`0500`) and a progress bar. The status pill shows **INIT** (renderer loading), **READY** (paused), **LIVE** (running), or **DONE** (run complete).
+The tick counter in the top-left of the panel shows the current tick (`0000`–`0960`) and a progress bar. The status pill shows **INIT** (renderer loading), **READY** (paused), **LIVE** (running), or **DONE** (run complete).
 
 ### Simulation canvas (centre)
 
-The canvas renders a 20 × 15 ward grid. Each tick represents **30 seconds** of real ward time; a full 500-tick run covers approximately 4 hours of operation.
+The canvas renders a 20 × 15 ward grid. Each tick represents **30 seconds** of real ward time; a full 960-tick run covers one 8-hour nursing shift.
 
 **Cell colours:**
 
@@ -73,7 +73,7 @@ The canvas renders a 20 × 15 ward grid. Each tick represents **30 seconds** of 
 | Orange | BLANKi robot |
 | Purple | EDi robot |
 
-**Health bar** — the bar above each patient runs from green (healthy) through amber to red. When a patient's health reaches 0 a critical incident is logged and health resets to 30.
+**Health bar** — the bar above each patient runs from green (healthy) through amber to red. When a patient's health reaches 0 a critical incident is logged and health resets to 50.
 
 **Battery bar** — the bar below each robot shows charge level. When it drops below 20% the robot abandons its current task and navigates to the nearest charging bay.
 
@@ -133,7 +133,7 @@ sma-40015-final-project/
 │   │   ├── Nurse.js               # Urgency-weighted scoring and decision-making
 │   │   ├── RobotMEDi.js           # Medication transport robot with battery mechanics
 │   │   ├── RobotBLANKi.js         # Comfort-items robot with battery mechanics
-│   │   ├── RobotEDi.js            # Visitor escort robot with ACCOMPANYING state
+│   │   ├── RobotEDi.js            # Visitor escort robot (instant hand-off; no accompanying phase)
 │   │   ├── SeededRandom.js        # Linear congruential PRNG (reproducible runs)
 │   │   ├── Stats.js               # Per-tick KPI collection and replication summary
 │   │   └── BatchRunner.js         # Headless 30-replication runner for experiments
@@ -188,7 +188,7 @@ Robots decide before nurses (step 2 before step 3) so that in Scenario B, robots
 | **Nurse** | Yes | All need types including emergencies | Scores needs by urgency × wait / distance |
 | **MEDi** | Yes | Medication only | Abandons task and goes to charge when battery < 20 |
 | **BLANKi** | Yes | Comfort only | Same battery mechanics |
-| **EDi** | Yes | Visitor escort only | Travels to entrance first, then to bed; enters ACCOMPANYING state (20–60 ticks) after escort |
+| **EDi** | Yes | Visitor escort only | Travels to entrance first, then to bed; instant hand-off at bed (no service countdown) — released to IDLE immediately |
 
 ### Core Constraint
 
@@ -196,7 +196,7 @@ Robots decide before nurses (step 2 before step 3) so that in Scenario B, robots
 
 ### KPIs Measured
 
-Collected per replication over ticks 50–500 (warm-up discarded):
+Collected per replication over ticks 50–960 (warm-up discarded):
 
 | KPI | Description |
 |-----|-------------|
@@ -237,23 +237,32 @@ BLANKI_COUNT:   2,   // BLANKi robots (Scenario B only)
 EDI_COUNT:      2,   // EDi robots (Scenario B only)
 
 // Simulation length
-TICKS_PER_RUN:  500, // 500 ticks × 30 s/tick ≈ 4 hours of ward time
+TICKS_PER_RUN:  960, // 960 ticks × 30 s/tick = 8-hour nursing shift
 WARM_UP_TICKS:  50,  // first 50 ticks discarded from statistics
 
 // Need spawn rates (probability per patient per tick)
 NEED_SPAWN_RATE: {
-  emergency:      0.005,  // rare but critical
-  medication:     0.02,
-  comfort:        0.04,
-  visitor_escort: 0.015,
+  emergency:      0.00005, // rare but critical
+  medication:     0.002,
+  comfort:        0.005,
+  visitor_escort: 0.0015,
 },
 
 // Health drain per tick per active unfulfilled need
 HEALTH_DRAIN_PER_TICK: {
-  emergency:     2.0,     // patient deteriorates quickly
-  medication:    0.8,
-  comfort:       0.3,
-  visitor_escort: 0.1,
+  emergency:     1.0,     // patient deteriorates quickly
+  medication:    0.3,
+  comfort:       0.1,
+  visitor_escort: 0.05,
+},
+
+// Movement speed (ticks required to traverse one grid cell; higher = slower)
+MOVEMENT_TICKS_PER_CELL: {
+  patient: 1,
+  nurse:   1,
+  medi:    2,  // robots move at half nurse speed by default
+  blanki:  2,
+  edi:     2,
 },
 
 // Experiment

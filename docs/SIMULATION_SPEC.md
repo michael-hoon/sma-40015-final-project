@@ -40,10 +40,10 @@ The ward is a **2D grid** representing a simplified hospital ward floor plan.
 
 ### Grid Dimensions
 
-- 4 wards with 8 beds each arranged in a realistic ward pattern (rows of beds along corridors)
-- 2–4 nurse stations (centrally located for fast response)
-- 3–4 charging bays (along edges, out of main corridors)
-- 1–2 entrances
+- 48 beds arranged in rows along corridors (4 bed rows × 12 beds per row in the default layout)
+- 4 nurse stations (centrally located for fast response)
+- 3 charging bays (along edges, out of main corridors)
+- 1 entrance
 
 ### Layout Design Principles
 
@@ -56,7 +56,7 @@ The ward is a **2D grid** representing a simplified hospital ward floor plan.
 
 - **Manhattan distance** for distance calculations and scoring
 - **BFS** for actual pathfinding (find shortest walkable route from agent to target)
-- Agents move **one cell per tick** along the path (nurses and robots have the same movement speed by default; configurable in config if needed)
+- Agents advance along their path at a per-agent-type speed defined by `config.MOVEMENT_TICKS_PER_CELL`. Default values: nurses and patients = 1 tick/cell; MEDi, BLANKi, and EDi robots = 2 ticks/cell (half the nurse speed, reflecting their slower physical motion). Each agent carries an internal cooldown that gates the next cell advance.
 - **Multiple agents can occupy the same corridor cell** (no collision blocking — this is a simplification to avoid deadlocks)
 - Agents **cannot walk through walls or beds** (only corridor, nurse station, charging bay, entrance cells are walkable)
 
@@ -83,12 +83,12 @@ Patients are **stationary** — they occupy a bed and do not move. They are prim
 #### Health Mechanics
 
 - Health **drains per tick** for each active (unfulfilled) need:
-  - Emergency: **−2.0 / tick**
-  - Medication: **−0.8 / tick**
-  - Comfort: **−0.3 / tick**
-  - Visitor Escort: **−0.1 / tick**
-- Health **recovers** when a need is fulfilled: **+5 per fulfilled need** (capped at 100)
-- **Critical incident** occurs when health reaches **0**. The patient's health is reset to 30 (representing emergency intervention) and the incident is logged. This is a primary failure metric.
+  - Emergency: **−1.0 / tick**
+  - Medication: **−0.3 / tick**
+  - Comfort: **−0.1 / tick**
+  - Visitor Escort: **−0.05 / tick**
+- Health **recovers** when a need is fulfilled: **+25 per fulfilled need** (capped at 100)
+- **Critical incident** occurs when health reaches **0**. The patient's health is reset to 50 (representing emergency intervention) and the incident is logged. This is a primary failure metric.
 - Multiple active needs stack their drain rates
 
 #### Need Generation
@@ -97,10 +97,10 @@ Each tick, a patient has a probability of generating each need type (checked ind
 
 | Need Type | Spawn Probability Per Tick | Urgency Weight |
 |-----------|---------------------------|----------------|
-| Emergency | 0.005 (rare but critical) | 10 |
-| Medication | 0.02 | 5 |
-| Comfort | 0.04 | 2 |
-| Visitor Escort | 0.015 | 1 |
+| Emergency | 0.00005 (rare but critical) | 10 |
+| Medication | 0.002 | 5 |
+| Comfort | 0.005 | 2 |
+| Visitor Escort | 0.0015 | 1 |
 
 - A patient can have **multiple simultaneous needs** (e.g. a comfort need and a medication need at the same time)
 - A patient **cannot have two of the same need type** active simultaneously
@@ -221,7 +221,7 @@ IDLE → MOVING_TO_PATIENT → SERVING → IDLE
 |-------|-------------------|---------------------|---------------------|-----------|----------------|
 | **MEDi** | Medication | 3–4 | 2 | 4 medicine vials (`MEDI_ITEM_CAPACITY`) | Nearest NURSE_STATION |
 | **BLANKi** | Comfort | 1–2 | 2 | 15 blankets (`BLANKI_ITEM_CAPACITY`) | Nearest NURSE_STATION |
-| **EDi** | Visitor Escort | 2–3 | 2 | None (no physical items carried) | N/A |
+| **EDi** | Visitor Escort | Instant (0) — hand-off only | 2 | None (no physical items carried) | N/A |
 
 #### MEDi / BLANKi Inventory & Refilling
 
@@ -240,7 +240,7 @@ IDLE → MOVING_TO_ENTRANCE → MOVING_TO_PATIENT → SERVING → IDLE
 ```
 
 - When EDi claims a Visitor Escort need, it first moves to the **ENTRANCE** cell to "pick up" the visitor, then moves to the patient's bed
-- After the escort service time completes, EDi transitions directly to `IDLE` — it does **not** linger at the patient's bed
+- Upon reaching the patient's bed, EDi performs an **instant hand-off** (no service-time countdown) and transitions immediately to `IDLE`. There is no ACCOMPANYING phase — EDi is released right away and becomes available for the next job. The `SERVICE_TIME.robot.visitor_escort` config entry exists for symmetry with MEDi/BLANKi but is ignored by EDi.
 - EDi carries no physical items and has no refilling mechanic
 
 ---
@@ -356,10 +356,10 @@ export const CONFIG = {
 
   // Patient needs — spawn probability per tick
   NEED_SPAWN_RATE: {
-    emergency: 0.005,
-    medication: 0.02,
-    comfort: 0.04,
-    visitor_escort: 0.015,
+    emergency: 0.00005,
+    medication: 0.002,
+    comfort: 0.005,
+    visitor_escort: 0.0015,
   },
 
   // Need urgency weights (used in nurse scoring)
@@ -372,14 +372,14 @@ export const CONFIG = {
 
   // Health mechanics
   HEALTH_DRAIN_PER_TICK: {
-    emergency: 2.0,
-    medication: 0.8,
-    comfort: 0.3,
-    visitor_escort: 0.1,
+    emergency: 1.0,
+    medication: 0.3,
+    comfort: 0.1,
+    visitor_escort: 0.05,
   },
-  HEALTH_RECOVERY_PER_NEED: 5,
+  HEALTH_RECOVERY_PER_NEED: 25,
   HEALTH_MAX: 100,
-  HEALTH_CRITICAL_RESET: 30,
+  HEALTH_CRITICAL_RESET: 50,
 
   // Service times [min, max] in ticks
   SERVICE_TIME: {
@@ -392,8 +392,18 @@ export const CONFIG = {
     robot: {
       medication: [3, 4],     // MEDi
       comfort: [1, 2],        // BLANKi
-      visitor_escort: [2, 3], // EDi (escort + hand-off; no accompanying phase)
+      visitor_escort: [2, 3], // Present for symmetry; EDi ignores this — hand-off is instant
     },
+  },
+
+  // Movement speed — ticks required to traverse one grid cell
+  // Higher value = slower. 1 = one cell per tick, 2 = one cell every two ticks.
+  MOVEMENT_TICKS_PER_CELL: {
+    patient: 1,
+    nurse:   1,
+    medi:    2,
+    blanki:  2,
+    edi:     2,
   },
 
   // Item capacities
