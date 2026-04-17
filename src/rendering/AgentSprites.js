@@ -1,31 +1,13 @@
 /**
  * @fileoverview Creates and updates Pixi.js sprites for all agent types.
- * Each agent gets a Container holding a coloured circle + text label.
+ * Each agent gets a Container holding a PNG sprite (loaded via PIXI.Assets).
  * Patient containers additionally show small need-indicator dots.
- * Nurse, MEDi, and BLANKi containers show an inventory bar above the circle.
+ * Nurse, MEDi, and BLANKi containers show an inventory bar above the sprite.
  *
  * Position interpolation: recordPositions() is called before each sim tick to
  * snapshot the pre-tick position; update(lerpT, ...) then interpolates display
  * position between the previous and current logical positions.
  */
-
-/** Agent fill colours — warm light clinical palette */
-const AGENT_FILL = {
-  patient: 0xFFFFFF,
-  nurse:   0x3F7E5A,
-  medi:    0x0D9488,
-  blanki:  0xD97706,
-  edi:     0x7C3AED,
-};
-
-/** Letter label per agent type */
-const AGENT_LABEL = {
-  patient: '',
-  nurse:   'N',
-  medi:    'M',
-  blanki:  'B',
-  edi:     'E',
-};
 
 /** Need dot colours — muted clinical palette */
 const NEED_COLORS = {
@@ -75,10 +57,12 @@ export default class AgentSprites {
    * @param {object} params
    * @param {PIXI.Container} params.container
    * @param {number} params.cellSize
+   * @param {Record<string, PIXI.Texture>} params.textures - keyed by agent type (patient/nurse/medi/blanki/edi)
    */
-  constructor({ container, cellSize }) {
+  constructor({ container, cellSize, textures }) {
     this.container = container;
     this.cellSize = cellSize;
+    this._textures = textures;
 
     /**
      * Keyed by agent id.
@@ -112,37 +96,17 @@ export default class AgentSprites {
     const type = agentType(agent.id);
     const cs = this.cellSize;
     const isPatient = type === 'patient';
-    const radius = isPatient ? cs * 0.36 : cs * 0.30;
 
     const cont = new PIXI.Container();
 
-    // Circle body
-    const circle = new PIXI.Graphics();
-    circle.circle(0, 0, radius).fill({ color: AGENT_FILL[type] });
-    if (isPatient) {
-      circle.circle(0, 0, radius).stroke({ color: 0xD6D3D1, width: 1.5 });
-    } else {
-      // Subtle white outer stroke for contrast on light background
-      circle.circle(0, 0, radius).stroke({ color: 0xFFFFFF, width: 1, alpha: 0.9 });
-    }
-    cont.addChild(circle);
-
-    // Letter label (non-patients only)
-    const labelChar = AGENT_LABEL[type];
-    if (labelChar) {
-      const label = new PIXI.Text({
-        text: labelChar,
-        style: {
-          fontFamily: 'Plus Jakarta Sans, system-ui, sans-serif',
-          fontSize: Math.max(8, Math.floor(cs * 0.38)),
-          fontWeight: 'bold',
-          fill: '#ffffff',
-          align: 'center',
-        },
-      });
-      label.anchor.set(0.5, 0.5);
-      cont.addChild(label);
-    }
+    // PNG sprite body
+    const texture = this._textures?.[type] ?? PIXI.Texture.EMPTY;
+    const sprite = new PIXI.Sprite(texture);
+    sprite.anchor.set(0.5);
+    const targetSize = isPatient ? cs * 0.72 : cs * 0.60;
+    sprite.width  = targetSize;
+    sprite.height = targetSize;
+    cont.addChild(sprite);
 
     // Need indicator dots container (patients only)
     let needDots = null;

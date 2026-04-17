@@ -89,6 +89,16 @@ export default class Renderer {
       needsCanvas:  this._needsCanvas,
     });
 
+    // Preload all sprite textures before building the simulation
+    this._textures = await PIXI.Assets.load(Object.values(CONFIG.SPRITES))
+      .then(loaded => {
+        const map = {};
+        for (const [key, path] of Object.entries(CONFIG.SPRITES)) {
+          map[key] = loaded[path] ?? PIXI.Texture.EMPTY;
+        }
+        return map;
+      });
+
     this._buildSimulation();
 
     // Start Pixi render loop
@@ -125,12 +135,14 @@ export default class Renderer {
     this._gridRenderer = new GridRenderer({
       container: this._gridLayer,
       grid,
-      cellSize: CELL_SIZE,
+      cellSize:  CELL_SIZE,
+      textures:  this._textures,
     });
 
     this._agentSprites = new AgentSprites({
       container: this._spriteLayer,
       cellSize:  CELL_SIZE,
+      textures:  this._textures,
     });
     this._agentSprites.initSprites(
       this._scheduler._patients,
