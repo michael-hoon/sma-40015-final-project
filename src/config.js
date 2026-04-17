@@ -107,6 +107,16 @@ export const CONFIG = {
     },
   },
 
+  // ── Movement speed (ticks required to traverse one grid cell) ──────────────
+  /** Higher value = slower. 1 = one cell per tick, 2 = one cell every two ticks. */
+  MOVEMENT_TICKS_PER_CELL: {
+    patient: 1,
+    nurse:   1,
+    medi:    2,
+    blanki:  2,
+    edi:     2,
+  },
+
   // ── Item capacities ─────────────────────────────────────────────────────────
   /** Nurse carries up to 2 items total; allocation between medicine/blanket is demand-driven on refill */
   NURSE_ITEM_CAPACITY: 2,

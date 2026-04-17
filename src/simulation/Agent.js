@@ -9,8 +9,9 @@ export default class Agent {
    * @param {string|number} params.id - Unique agent identifier
    * @param {{x: number, y: number}} params.position - Starting grid position
    * @param {import('./Grid.js').default} params.grid
+   * @param {number} [params.ticksPerCell=1] - Ticks required to traverse one grid cell
    */
-  constructor({ id, position, grid }) {
+  constructor({ id, position, grid, ticksPerCell = 1 }) {
     this.id = id;
     this.position = { ...position };
     this.grid = grid;
@@ -23,6 +24,12 @@ export default class Agent {
 
     /** @type {{x: number, y: number} | null} Current movement destination */
     this.target = null;
+
+    /** @type {number} Ticks required per cell traversal (>=1; higher = slower). */
+    this.ticksPerCell = Math.max(1, ticksPerCell);
+
+    /** @type {number} Ticks still to wait before the next cell advance. */
+    this._moveCooldown = 0;
   }
 
   /**
@@ -53,8 +60,13 @@ export default class Agent {
    */
   moveStep() {
     if (!this._path || this._path.length === 0) return true; // already at destination
+    if (this._moveCooldown > 0) {
+      this._moveCooldown--;
+      return false; // still crossing the previous cell this tick
+    }
     const next = this._path.shift();
     this.position = { ...next };
+    this._moveCooldown = this.ticksPerCell - 1;
     return this._path.length === 0;
   }
 

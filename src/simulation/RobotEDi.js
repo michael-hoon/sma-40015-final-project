@@ -32,7 +32,7 @@ export default class RobotEDi extends Agent {
    * @param {import('./SeededRandom.js').default} params.rng
    */
   constructor({ id, position, grid, config, needQueue, rng }) {
-    super({ id, position, grid });
+    super({ id, position, grid, ticksPerCell: config.MOVEMENT_TICKS_PER_CELL.edi });
     this.config = config;
     this.needQueue = needQueue;
     this.rng = rng;

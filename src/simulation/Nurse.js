@@ -30,7 +30,7 @@ export default class Nurse extends Agent {
    * @param {import('./SeededRandom.js').default} params.rng
    */
   constructor({ id, position, grid, config, needQueue, rng }) {
-    super({ id, position, grid });
+    super({ id, position, grid, ticksPerCell: config.MOVEMENT_TICKS_PER_CELL.nurse });
     this.config = config;
     this.needQueue = needQueue;
     this.rng = rng;
