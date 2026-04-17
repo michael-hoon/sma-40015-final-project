@@ -142,4 +142,17 @@ export const CONFIG = {
   // ── Debug ───────────────────────────────────────────────────────────────────
   /** Set to true to enable console.log output during development */
   DEBUG: false,
+
+  // ── Sprites ─────────────────────────────────────────────────────────────────
+  /** PNG paths for agent and grid-cell sprites (64×64 px with transparency). */
+  SPRITES: {
+    patient:       'assets/sprites/patient.png',
+    nurse:         'assets/sprites/nurse.png',
+    medi:          'assets/sprites/medi.png',
+    blanki:        'assets/sprites/blanki.png',
+    edi:           'assets/sprites/edi.png',
+    nurse_station: 'assets/sprites/nurse_station.png',
+    charging_bay:  'assets/sprites/charging_bay.png',
+    entrance:      'assets/sprites/entrance.png',
+  },
 };
