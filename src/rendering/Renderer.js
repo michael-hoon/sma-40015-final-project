@@ -16,7 +16,7 @@ import HealthBarRenderer from './HealthBarRenderer.js';
 import ChartManager from './ChartManager.js';
 
 /** Pixels per grid cell */
-const CELL_SIZE = 32;
+const CELL_SIZE = 40;
 
 export default class Renderer {
   /**
