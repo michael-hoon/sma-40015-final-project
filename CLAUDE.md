@@ -17,7 +17,7 @@ This is an undergraduate course project for "Simulation Modelling and Analysis".
 | UI reactivity | **Alpine.js** | Control panel bindings (sliders, toggles, scenario selectors) — no build step |
 | Styling | **Tailwind CSS (CDN)** | Utility-first CSS via CDN link, no build tooling |
 | Simulation engine | **Vanilla JS (ES modules)** | Custom tick scheduler, agent classes, spatial grid, pathfinding |
-| No build tools | — | No npm, no bundlers, no webpack. All libraries loaded via CDN `<script>` tags or ES module imports from CDN (e.g. esm.sh, cdn.jsdelivr.net). The project must run by opening `index.html` in a browser. |
+| No build tools | — | No npm, no bundlers, no webpack. All libraries loaded via CDN `<script>` tags or ES module imports from CDN (e.g. esm.sh, cdn.jsdelivr.net). ES modules require a local HTTP server (e.g. `python -m http.server 8080`) — the browser will not load them over `file://`. |
 
 ### CDN Sources
 
@@ -115,7 +115,7 @@ sma-40015-final-project/
 1. **Patients** generate new needs (stochastic, based on per-type spawn rates)
 2. **Robots** scan NeedQueue, select nearest matching need, claim it; robots with empty inventory go to NURSE_STATION to refill instead
 3. **Nurses** scan NeedQueue (unclaimed + emergency-only), score by `urgency × wait_time / distance`, claim highest-scoring; nurses skip needs requiring items they don't carry; nurses with empty inventory slots and no serviceable need go to NURSE_STATION to refill
-4. **All agents move** one step toward their target (grid-based movement); visitor_escort handlers (nurses and EDi) go to ENTRANCE first, then to patient
+4. **All agents move** toward their target (grid-based movement). Each agent type advances at a speed set by `config.MOVEMENT_TICKS_PER_CELL` — nurses default to 1 tick/cell, robots default to 2 ticks/cell (half speed). An agent whose internal cooldown is still running stays in place this tick. Visitor_escort handlers (nurses and EDi) go to ENTRANCE first, then to patient.
 5. **Task execution** — agents at their target perform the task (decrement service time or refill timer)
 6. **State transitions** — completed tasks/refills free the agent; patients with fulfilled needs recover health; battery drain/charge for robots
 7. **Health drain** — all patients with unfulfilled needs lose health (rate depends on need urgency)
