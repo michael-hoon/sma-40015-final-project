@@ -1,59 +1,151 @@
 /**
- * @fileoverview Renders the static ward grid as coloured rectangles via Pixi.js Graphics.
- * Drawn once on construction; call redraw() if the layout changes.
- * Depends on PIXI being available as a global (loaded via CDN).
+ * @fileoverview Renders the ward grid in isometric view.
+ *
+ * Cells are z-sorted by (col + row) — painter's algorithm — so front cells
+ * draw on top of back cells. Walls are extruded with two visible side faces
+ * (lighter left, darker right). Beds get a raised mattress + pillow overlay.
+ *
+ * Drawn once to a single static Graphics object; call redraw() if the layout
+ * changes at runtime.
  */
-
-/** Hex fill colours per cell-type symbol — warm light clinical palette */
-const CELL_COLORS = {
-  '.': 0xF5F5F4,  // CORRIDOR — warm stone-100
-  '#': 0xA8A29E,  // WALL — stone-400
-  'B': 0xFFFFFF,  // BED — white (patients rendered on top)
-  'N': 0xD1FAE5,  // NURSE_STATION — emerald-100 mint
-  'C': 0xFEF9C3,  // CHARGING_BAY — yellow-100 cream
-  'E': 0xDBEAFE,  // ENTRANCE — blue-100 sky
-};
+import { isoToScreen, TILE_W, TILE_H, WALL_H } from './IsoProjection.js';
+import { THEME } from './Theme.js';
 
 export default class GridRenderer {
   /**
    * @param {object} params
    * @param {PIXI.Container} params.container
    * @param {import('../simulation/Grid.js').default} params.grid
-   * @param {number} params.cellSize - Pixels per grid cell
    */
-  constructor({ container, grid, cellSize }) {
+  constructor({ container, grid }) {
     this.container = container;
-    this.grid = grid;
-    this.cellSize = cellSize;
+    this.grid      = grid;
 
-    this._bg = new PIXI.Graphics();
-    container.addChild(this._bg);
+    this._g = new PIXI.Graphics();
+    container.addChild(this._g);
     this._draw();
   }
 
-  /** @private */
+  /** @private — full redraw (called once on construction; rarely after that). */
   _draw() {
-    const g = this._bg;
-    const cs = this.cellSize;
+    const g = this._g;
     g.clear();
 
-    for (let y = 0; y < this.grid.height; y++) {
-      for (let x = 0; x < this.grid.width; x++) {
-        const cell = this.grid.layout[y][x];
-        const color = CELL_COLORS[cell] ?? 0xD6D3D1;
-        const px = x * cs;
-        const py = y * cs;
+    const W = this.grid.width;
+    const H = this.grid.height;
 
-        // Filled cell
-        g.rect(px, py, cs, cs).fill({ color });
-        // Subtle grid line
-        g.rect(px, py, cs, cs).stroke({ color: 0xE7E5E4, width: 0.5, alpha: 0.6 });
+    // Collect cells and sort by (col + row) — back-to-front.
+    // At equal depth, walls are drawn last so they cover adjacent floors.
+    const cells = [];
+    for (let row = 0; row < H; row++) {
+      for (let col = 0; col < W; col++) {
+        cells.push({ col, row, type: this.grid.layout[row][col] });
+      }
+    }
+    cells.sort((a, b) => {
+      const d = (a.col + a.row) - (b.col + b.row);
+      if (d !== 0) return d;
+      // Same depth: walls drawn after floors
+      return (a.type === '#' ? 1 : 0) - (b.type === '#' ? 1 : 0);
+    });
+
+    for (const { col, row, type } of cells) {
+      const { x: cx, y: cy } = isoToScreen(col, row);
+      if (type === '#') {
+        this._drawWall(g, cx, cy);
+      } else {
+        this._drawFloor(g, cx, cy, type, col, row);
+        if (type === 'B') this._drawBedOverlay(g, cx, cy);
       }
     }
   }
 
-  /** Redraw all cells — call if the grid layout changes at runtime. */
-  redraw() {
-    this._draw();
+  /**
+   * Draw a regular floor/special diamond tile.
+   * @private
+   */
+  _drawFloor(g, cx, cy, type, col, row) {
+    const hw = TILE_W / 2, hh = TILE_H / 2;
+    const isAlt = (col + row) % 2 === 1;
+
+    let topColor;
+    switch (type) {
+      case 'N': topColor = THEME.nurseStTop;  break;
+      case 'C': topColor = THEME.chargingTop; break;
+      case 'E': topColor = THEME.entranceTop; break;
+      case 'B': topColor = THEME.bedTop;      break;
+      default:  topColor = isAlt ? THEME.floorAlt : THEME.floor; break;
+    }
+
+    g.poly([cx, cy - hh, cx + hw, cy, cx, cy + hh, cx - hw, cy])
+      .fill({ color: topColor });
   }
+
+  /**
+   * Draw a wall block: left face (lighter) + right face (darker) + top diamond.
+   * @private
+   */
+  _drawWall(g, cx, cy) {
+    const hw = TILE_W / 2, hh = TILE_H / 2;
+
+    // Left face — faces SW (lighter, toward ambient light source)
+    g.poly([
+      cx - hw, cy,
+      cx,      cy + hh,
+      cx,      cy + hh - WALL_H,
+      cx - hw, cy      - WALL_H,
+    ]).fill({ color: THEME.wallLeft });
+
+    // Right face — faces SE (darker, in shadow)
+    g.poly([
+      cx,      cy + hh,
+      cx + hw, cy,
+      cx + hw, cy      - WALL_H,
+      cx,      cy + hh - WALL_H,
+    ]).fill({ color: THEME.wallRight });
+
+    // Top diamond (raised by WALL_H)
+    g.poly([
+      cx,      cy - hh - WALL_H,
+      cx + hw, cy      - WALL_H,
+      cx,      cy + hh - WALL_H,
+      cx - hw, cy      - WALL_H,
+    ]).fill({ color: THEME.wallTop });
+  }
+
+  /**
+   * Draw mattress and pillow overlays on a bed tile.
+   * @private
+   */
+  _drawBedOverlay(g, cx, cy) {
+    const hw = TILE_W / 2, hh = TILE_H / 2;
+    const lift   = 4;         // how many px the mattress floats above the tile
+    const inset  = 0.72;      // mattress is 72 % of tile size
+
+    const mhw = hw * inset;
+    const mhh = hh * inset;
+
+    // Mattress — inset diamond, raised
+    g.poly([
+      cx,       cy - mhh - lift,
+      cx + mhw, cy      - lift,
+      cx,       cy + mhh - lift,
+      cx - mhw, cy      - lift,
+    ]).fill({ color: THEME.mattressTop });
+
+    // Pillow — small diamond at the head end (top quarter of mattress)
+    const phw = hw * 0.30;
+    const phh = hh * 0.26;
+    const pcy = cy - mhh * 0.50 - lift;
+
+    g.poly([
+      cx,       pcy - phh,
+      cx + phw, pcy,
+      cx,       pcy + phh,
+      cx - phw, pcy,
+    ]).fill({ color: THEME.bedPillow });
+  }
+
+  /** Redraw all cells. Call if the grid layout changes at runtime. */
+  redraw() { this._draw(); }
 }

@@ -1,13 +1,18 @@
 /**
- * @fileoverview Chart.js dashboard — real-time patient health line chart
- * and active needs bar chart. Expects Chart to be available globally (CDN).
+ * @fileoverview Chart.js dashboard — real-time patient health line chart,
+ * active needs bar chart, and sparkline factory for KPI watermarks.
+ * Expects Chart to be available globally (CDN).
+ *
+ * Palette: sage green primary (#5F9B7C), muted need colours, warm chart grids.
  */
 
-const MAX_POINTS = 200; // rolling window
+const MAX_POINTS = 200; // rolling window for main charts
+const SPARK_MAX  = 80;  // rolling window for sparklines
 
-// Global Chart.js defaults — warm light clinical theme
-Chart.defaults.font.family = "'IBM Plex Sans', system-ui, sans-serif";
-Chart.defaults.color = '#57534E';
+// ── Global Chart.js defaults — warm light clinical theme ──────────────────────
+Chart.defaults.font.family    = "'IBM Plex Sans', system-ui, sans-serif";
+Chart.defaults.color          = '#57534E';
+Chart.defaults.borderColor    = '#E7E5E4';
 
 export default class ChartManager {
   /**
@@ -20,6 +25,8 @@ export default class ChartManager {
     this._needsChart  = this._buildNeedsChart(needsCanvas);
   }
 
+  // ── Main chart constructors ─────────────────────────────────────────────────
+
   /** @private */
   _buildHealthChart(canvas) {
     return new Chart(canvas, {
@@ -30,10 +37,11 @@ export default class ChartManager {
           {
             label: 'Avg Health',
             data: [],
-            borderColor: '#0D9488',
-            backgroundColor: 'rgba(13,148,136,0.08)',
+            borderColor: '#5F9B7C',
+            backgroundColor: 'rgba(95,155,124,0.10)',
             tension: 0.35,
             pointRadius: 0,
+            pointHoverRadius: 4,
             borderWidth: 2,
             fill: true,
           },
@@ -57,20 +65,25 @@ export default class ChartManager {
         scales: {
           x: {
             border: { display: false },
-            ticks: { maxTicksLimit: 8, color: '#57534E', font: { size: 10 } },
-            grid: { color: '#E7E5E4' },
+            ticks: { maxTicksLimit: 8, color: '#A8A29E', font: { size: 10 } },
+            grid: { display: false },
           },
           y: {
             min: 0,
             max: 100,
             border: { display: false },
-            ticks: { color: '#57534E', font: { size: 10 } },
-            grid: { color: '#E7E5E4' },
+            ticks: { color: '#A8A29E', font: { size: 10 } },
+            grid: { color: '#E7E5E4', drawBorder: false },
           },
         },
         plugins: {
           legend: {
-            labels: { color: '#1C1917', font: { size: 11 }, boxWidth: 12, usePointStyle: true },
+            labels: {
+              color: '#57534E',
+              font: { size: 11, family: "'IBM Plex Sans', system-ui, sans-serif" },
+              boxWidth: 12,
+              usePointStyle: true,
+            },
           },
         },
       },
@@ -87,9 +100,10 @@ export default class ChartManager {
           {
             label: 'Active needs',
             data: [0, 0, 0, 0],
-            backgroundColor: ['#EF4444', '#0EA5E9', '#F59E0B', '#8B5CF6'],
-            borderRadius: 6,
+            backgroundColor: ['#EF4444', '#4F92B5', '#E3AA55', '#9B7FB8'],
+            borderRadius: 8,
             borderSkipped: false,
+            maxBarThickness: 42,
           },
         ],
       },
@@ -100,14 +114,14 @@ export default class ChartManager {
         scales: {
           x: {
             border: { display: false },
-            ticks: { color: '#57534E', font: { size: 10 } },
+            ticks: { color: '#A8A29E', font: { size: 10 } },
             grid: { display: false },
           },
           y: {
             min: 0,
             border: { display: false },
-            ticks: { color: '#57534E', font: { size: 10 }, stepSize: 1 },
-            grid: { color: '#E7E5E4' },
+            ticks: { color: '#A8A29E', font: { size: 10 }, stepSize: 1 },
+            grid: { color: '#E7E5E4', drawBorder: false },
           },
         },
         plugins: {
@@ -117,15 +131,65 @@ export default class ChartManager {
     });
   }
 
+  // ── Static sparkline factory ────────────────────────────────────────────────
+
   /**
-   * Push one tick snapshot to the charts. Called once per simulated tick.
+   * Build a lightweight sparkline chart for KPI card watermarks.
+   * No axes, no grid, no legend — thin filled-area line.
+   * Caller is responsible for pushing data and calling update().
+   *
+   * @param {HTMLCanvasElement} canvas
+   * @param {string} colour - CSS hex colour for the line (#RRGGBB)
+   * @returns {Chart}
+   */
+  static buildSparkline(canvas, colour) {
+    // Derive a low-opacity fill from the hex colour
+    const r = parseInt(colour.slice(1, 3), 16);
+    const g = parseInt(colour.slice(3, 5), 16);
+    const b = parseInt(colour.slice(5, 7), 16);
+    const fill = `rgba(${r},${g},${b},0.18)`;
+
+    return new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          data: [],
+          borderColor: colour,
+          backgroundColor: fill,
+          borderWidth: 1.5,
+          tension: 0.4,
+          pointRadius: 0,
+          fill: true,
+        }],
+      },
+      options: {
+        animation: false,
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend:  { display: false },
+          tooltip: { enabled: false },
+        },
+        scales: {
+          x: { display: false },
+          y: { display: false },
+        },
+      },
+    });
+  }
+
+  // ── Data push ───────────────────────────────────────────────────────────────
+
+  /**
+   * Push one tick snapshot to the main charts. Called once per simulated tick.
    * @param {object} snapshot - tickHistory entry
    * @param {object[]} allNeeds - NeedQueue.getAll()
    */
   pushTick(snapshot, allNeeds) {
     const { tick, averagePatientHealth, lowestPatientHealth } = snapshot;
 
-    // ── Health line chart (rolling window) ──────────────────────────────────
+    // Health line chart (rolling window)
     const hc = this._healthChart;
     hc.data.labels.push(tick);
     hc.data.datasets[0].data.push(averagePatientHealth);
@@ -137,7 +201,7 @@ export default class ChartManager {
     }
     hc.update('none');
 
-    // ── Needs bar chart ──────────────────────────────────────────────────────
+    // Needs bar chart
     const active = allNeeds.filter(n => n.status !== 'fulfilled');
     this._needsChart.data.datasets[0].data = [
       active.filter(n => n.type === 'emergency').length,
@@ -148,7 +212,7 @@ export default class ChartManager {
     this._needsChart.update('none');
   }
 
-  /** Reset both charts to empty (called on simulation reset). */
+  /** Reset both main charts to empty (called on simulation reset). */
   clear() {
     const hc = this._healthChart;
     hc.data.labels = [];

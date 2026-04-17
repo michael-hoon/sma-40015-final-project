@@ -3,11 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CGH Hospital Robot ABM</title>
+  <title>CGH Ward Operations Simulator</title>
+  <link rel="icon" href="assets/images/cgh-logo.png" />
 
   <!--
     Fonts: Plus Jakarta Sans (headings/labels) · IBM Plex Sans (body) · JetBrains Mono (data)
     Warm light clinical theme — Apple Health × Material Design 3 aesthetic.
+    Sage green accent (#5F9B7C) aligns with nurse agent colour on the ward canvas.
   -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -17,6 +19,7 @@
   <!-- CDN libraries — no build step -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://cdn.jsdelivr.net/npm/pixi.js@8/dist/pixi.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.15/dist/gsap.min.js"></script>
 
   <style>
     /* ─────────────────────────────────────────────────────────────────────
@@ -26,46 +29,51 @@
       /* Surfaces */
       --bg:           #FAFAF9;
       --surface:      #FFFFFF;
-      --surface-sunk: #F5F5F4;
-      --border-hair:  #E7E5E4;
+      --surface-2:    #F5F5F4;   /* inset/sunk surfaces */
 
       /* Text */
-      --text-hi:  #1C1917;
-      --text-mid: #57534E;
-      --text-lo:  #A8A29E;
+      --ink:   #1C1917;   /* headings, KPI values */
+      --ink-2: #57534E;   /* secondary text */
+      --ink-3: #A8A29E;   /* tertiary / disabled */
 
-      /* Primary accent — muted teal */
-      --accent:      #0D9488;
-      --accent-soft: #CCFBF1;
-      --accent-glow: rgba(13,148,136,0.12);
-      --accent-dim:  rgba(13,148,136,0.08);
+      /* Hairline — chart gridlines only; never use as a border elsewhere */
+      --hairline: #E7E5E4;
 
-      /* Semantic colours */
-      --green:  #3F7E5A;
-      --amber:  #F59E0B;
-      --red:    #EF4444;
-      --coral:  #EF4444;
+      /* Primary accent — sage green */
+      --accent:      #5F9B7C;
+      --accent-h:    #4F8A6B;   /* hover / pressed */
+      --accent-tint: #E8F0EB;   /* selected background */
+      --accent-deep: #2F5C47;   /* text on tint */
+      --accent-glow: rgba(95,155,124,0.14);
+      --accent-dim:  rgba(95,155,124,0.08);
 
-      /* Agent/need palette */
-      --c-nurse:   #3F7E5A;
-      --c-medi:    #0D9488;
-      --c-blanki:  #D97706;
-      --c-edi:     #7C3AED;
+      /* Semantic */
+      --danger:      #EF4444;
+      --danger-tint: #FEF2F2;
+      --warn:        #F59E0B;
+      --ok:          #3F7E5A;
+
+      /* Agent / need palette — shared with Pixi THEME */
+      --c-nurse:   #5F9B7C;
+      --c-medi:    #4F92B5;
+      --c-blanki:  #E39B6B;
+      --c-edi:     #9B7FB8;
       --c-emerg:   #EF4444;
-      --c-med:     #0EA5E9;
-      --c-comfort: #F59E0B;
-      --c-visitor: #8B5CF6;
+      --c-med:     #4F92B5;
+      --c-comfort: #E3AA55;
+      --c-visitor: #9B7FB8;
 
-      /* Elevation */
-      --shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
-      --shadow-md: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
-      --shadow-lg: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+      /* Elevation — defined by shadow, never outline */
+      --sh-card: 0 1px 2px rgba(28,25,23,0.04), 0 4px 12px rgba(28,25,23,0.06);
+      --sh-lift: 0 2px 4px rgba(28,25,23,0.06), 0 12px 24px rgba(28,25,23,0.08);
+      --sh-sm:   0 1px 2px rgba(28,25,23,0.06);
 
       /* Border radii */
-      --radius-sm:   8px;
-      --radius-md:   12px;
-      --radius-lg:   16px;
-      --radius-pill: 999px;
+      --r-sm:   8px;
+      --r-md:   12px;
+      --r-lg:   16px;
+      --r-xl:   20px;
+      --r-pill: 999px;
     }
 
     /* ─────────────────────────────────────────────────────────────────────
@@ -78,15 +86,15 @@
       overflow: hidden;
       font-family: 'IBM Plex Sans', system-ui, sans-serif;
       font-size: 13px;
-      color: var(--text-hi);
+      color: var(--ink);
       background: var(--bg);
       -webkit-font-smoothing: antialiased;
     }
 
     ::-webkit-scrollbar            { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track      { background: var(--surface-sunk); }
-    ::-webkit-scrollbar-thumb      { background: var(--border-hair); border-radius: var(--radius-pill); }
-    ::-webkit-scrollbar-thumb:hover{ background: var(--text-lo); }
+    ::-webkit-scrollbar-track      { background: var(--surface-2); }
+    ::-webkit-scrollbar-thumb      { background: var(--hairline); border-radius: var(--r-pill); }
+    ::-webkit-scrollbar-thumb:hover{ background: var(--ink-3); }
 
     /* Prevent Alpine FOUC */
     [x-cloak] { display: none !important; }
@@ -112,14 +120,14 @@
       justify-content: space-between;
       padding: 0 20px;
       background: var(--surface);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--sh-card);
       gap: 16px;
       z-index: 10;
     }
     .hdr-brand {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
     }
     .hdr-logo {
       height: 32px;
@@ -127,64 +135,63 @@
       object-fit: contain;
       flex-shrink: 0;
     }
+    .hdr-logo-sutd { height: 26px; }
     .hdr-name {
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 15px;
       font-weight: 700;
-      color: var(--text-hi);
+      color: var(--ink);
       letter-spacing: -0.01em;
     }
     .hdr-sep {
       width: 1px;
       height: 16px;
-      background: var(--border-hair);
+      background: var(--hairline);
       align-self: center;
     }
     .hdr-sub {
-      font-family: 'IBM Plex Sans', sans-serif;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 400;
-      color: var(--text-mid);
+      color: var(--ink-2);
     }
     .hdr-right {
-      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
       font-weight: 500;
-      color: var(--text-lo);
+      color: var(--ink-3);
       letter-spacing: 0.02em;
+      flex-shrink: 0;
     }
 
     /* ─────────────────────────────────────────────────────────────────────
-       Three-column grid
+       Three-column grid — no column borders, defined by surface + shadow
        ───────────────────────────────────────────────────────────────────── */
     .cols {
       flex: 1;
       display: grid;
-      grid-template-columns: 272px 640px 1fr;
+      grid-template-columns: 328px 1fr 380px;
       overflow: hidden;
       min-width: 0;
     }
 
     /* ─────────────────────────────────────────────────────────────────────
-       Card component — reused across all panels
+       Card component
        ───────────────────────────────────────────────────────────────────── */
     .card {
       background: var(--surface);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-md);
+      border-radius: var(--r-md);
+      box-shadow: var(--sh-card);
       padding: 14px 16px;
       transition: box-shadow 0.15s;
     }
-    .card:hover { box-shadow: var(--shadow-lg); }
+    .card:hover { box-shadow: var(--sh-lift); }
 
-    /* Card section header */
     .card-hdr {
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.10em;
       text-transform: uppercase;
-      color: var(--text-lo);
+      color: var(--ink-3);
       margin-bottom: 12px;
     }
 
@@ -199,7 +206,6 @@
       gap: 8px;
       padding: 10px 8px;
       background: var(--bg);
-      border-right: 1px solid var(--border-hair);
     }
 
     /* ── Tick / status readout ───────────────────────────────────────── */
@@ -217,12 +223,13 @@
       line-height: 1;
       letter-spacing: -0.02em;
       transition: color 0.3s;
+      font-variant-numeric: tabular-nums;
     }
-    .tick-num.idle { color: var(--border-hair); }
+    .tick-num.idle { color: var(--hairline); }
     .tick-denom {
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       margin-top: 5px;
       line-height: 1.3;
     }
@@ -232,18 +239,18 @@
       align-items: center;
       gap: 5px;
       padding: 4px 10px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.08em;
       text-transform: uppercase;
-      background: var(--surface-sunk);
-      color: var(--text-lo);
+      background: var(--surface-2);
+      color: var(--ink-3);
     }
-    .status-pill.live { background: var(--accent-soft); color: var(--accent); }
-    .status-pill.done { background: #DCFCE7; color: var(--green); }
-    .status-pill.init { background: var(--surface-sunk); color: var(--text-lo); }
+    .status-pill.live { background: var(--accent-tint); color: var(--accent-deep); }
+    .status-pill.done { background: #DCFCE7; color: var(--ok); }
+    .status-pill.init { background: var(--surface-2); color: var(--ink-3); }
     .s-dot {
       width: 5px; height: 5px;
       border-radius: 50%;
@@ -253,14 +260,14 @@
 
     .prog-track {
       height: 4px;
-      background: var(--surface-sunk);
-      border-radius: var(--radius-pill);
+      background: var(--surface-2);
+      border-radius: var(--r-pill);
       overflow: hidden;
     }
     .prog-fill {
       height: 100%;
       background: var(--accent);
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       transition: width 0.22s linear;
     }
 
@@ -272,7 +279,7 @@
       align-items: center;
       justify-content: center;
       gap: 9px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 13px;
       font-weight: 700;
@@ -286,8 +293,8 @@
       margin-bottom: 8px;
     }
     .btn-play:not(:disabled):hover {
-      background: #0F766E;
-      box-shadow: 0 4px 14px rgba(13,148,136,0.30);
+      background: var(--accent-h);
+      box-shadow: 0 4px 14px rgba(95,155,124,0.34);
       transform: translateY(-1px);
     }
     .btn-play:not(:disabled):active { transform: translateY(0); }
@@ -305,7 +312,7 @@
       align-items: center;
       justify-content: center;
       gap: 5px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 600;
@@ -313,14 +320,13 @@
       text-transform: uppercase;
       cursor: pointer;
       transition: background 0.12s, box-shadow 0.12s, transform 0.1s;
-      border: 1.5px solid var(--border-hair);
-      background: var(--surface);
-      color: var(--text-mid);
+      border: none;
+      background: var(--surface-2);
+      color: var(--ink-2);
     }
     .btn-sm:not(:disabled):hover {
-      background: var(--surface-sunk);
-      border-color: var(--text-lo);
-      color: var(--text-hi);
+      background: var(--hairline);
+      color: var(--ink);
       transform: translateY(-1px);
     }
     .btn-sm:not(:disabled):active { transform: translateY(0); }
@@ -332,13 +338,13 @@
       grid-template-columns: 1fr 1fr;
       gap: 3px;
       padding: 3px;
-      background: var(--surface-sunk);
-      border-radius: var(--radius-pill);
+      background: var(--surface-2);
+      border-radius: var(--r-pill);
       margin-bottom: 10px;
     }
     .seg-btn {
       padding: 8px 4px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 600;
@@ -347,19 +353,19 @@
       cursor: pointer;
       transition: all 0.15s;
       border: none;
-      color: var(--text-mid);
+      color: var(--ink-2);
       background: transparent;
     }
-    .seg-btn.on  {
+    .seg-btn.on {
       background: var(--surface);
-      color: var(--accent);
-      box-shadow: var(--shadow-sm);
+      color: var(--accent-deep);
+      box-shadow: var(--sh-sm);
     }
-    .seg-btn:not(.on):hover { color: var(--text-hi); }
+    .seg-btn:not(.on):hover { color: var(--ink); }
 
     .scenario-hint {
       font-size: 11.5px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       line-height: 1.6;
       min-height: 36px;
     }
@@ -378,25 +384,26 @@
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 12px;
       font-weight: 500;
-      color: var(--text-mid);
+      color: var(--ink-2);
     }
     .f-lbl-hint {
       font-size: 10px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       font-weight: 400;
     }
     .f-val {
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       font-weight: 500;
-      color: var(--text-hi);
-      background: var(--surface-sunk);
+      color: var(--ink);
+      background: var(--surface-2);
       padding: 2px 8px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       min-width: 28px;
       text-align: center;
+      font-variant-numeric: tabular-nums;
     }
-    .f-val.accent { color: var(--accent); background: var(--accent-soft); }
+    .f-val.accent { color: var(--accent-deep); background: var(--accent-tint); }
 
     .slider-wrap { margin-bottom: 14px; }
     input[type="range"].slider {
@@ -404,9 +411,9 @@
       appearance: none;
       display: block;
       width: 100%;
-      height: 6px;
-      background: var(--border-hair);
-      border-radius: var(--radius-pill);
+      height: 4px;
+      background: var(--surface-2);
+      border-radius: var(--r-pill);
       outline: none;
       cursor: pointer;
       margin-top: 8px;
@@ -418,7 +425,7 @@
       background: var(--surface);
       border: 2px solid var(--accent);
       cursor: pointer;
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--sh-sm);
       transition: box-shadow 0.12s, transform 0.1s;
     }
     input[type="range"].slider::-webkit-slider-thumb:hover {
@@ -437,34 +444,34 @@
     input[type="range"].slider.c-blue::-webkit-slider-thumb   { border-color: var(--c-medi); }
     input[type="range"].slider.c-orange::-webkit-slider-thumb { border-color: var(--c-blanki); }
     input[type="range"].slider.c-purple::-webkit-slider-thumb { border-color: var(--c-edi); }
+    input[type="range"].slider.c-red::-webkit-slider-thumb    { border-color: var(--c-emerg); }
+    input[type="range"].slider.c-amber::-webkit-slider-thumb  { border-color: var(--c-comfort); }
 
     .slider-ends {
       display: flex;
       justify-content: space-between;
       margin-top: 4px;
       font-size: 9.5px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       letter-spacing: 0.04em;
       font-family: 'IBM Plex Sans', sans-serif;
     }
 
     .seed-input {
       width: 80px;
-      background: var(--surface-sunk);
-      border: 1.5px solid var(--border-hair);
-      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: none;
+      border-radius: var(--r-sm);
       padding: 5px 10px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
-      color: var(--text-hi);
+      color: var(--ink);
       text-align: right;
       outline: none;
-      transition: border-color 0.12s, box-shadow 0.12s;
+      transition: box-shadow 0.12s;
+      box-shadow: var(--sh-sm);
     }
-    .seed-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px var(--accent-glow);
-    }
+    .seed-input:focus { box-shadow: 0 0 0 3px var(--accent-glow); }
 
     /* Colour swatch dot */
     .swatch {
@@ -481,7 +488,7 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 700;
@@ -489,12 +496,12 @@
       text-transform: uppercase;
       cursor: pointer;
       transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-      border: 1.5px solid var(--accent);
-      background: transparent;
-      color: var(--accent);
+      border: none;
+      background: var(--accent-tint);
+      color: var(--accent-deep);
     }
     .btn-exp:not(:disabled):hover {
-      background: var(--accent-soft);
+      background: var(--accent-tint);
       box-shadow: 0 2px 8px var(--accent-glow);
       transform: translateY(-1px);
     }
@@ -506,32 +513,76 @@
        ───────────────────────────────────────────────────────────────────── */
     .canvas-col {
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
+      padding: 10px 0;
+      gap: 10px;
       background: var(--bg);
+      overflow: hidden;
+    }
+
+    /* ── Status strip — above the canvas ────────────────────────────── */
+    .status-strip {
+      width: 700px;
+      max-width: 100%;
+      height: 44px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 16px;
+      background: var(--surface);
+      border-radius: var(--r-md);
+      box-shadow: var(--sh-card);
+      flex-shrink: 0;
+    }
+    .ss-group {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+    .ss-label {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-3);
+    }
+    .ss-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .ss-dot {
+      color: var(--ink-3);
+      font-size: 12px;
     }
 
     .canvas-shell {
       position: relative;
-      border-radius: var(--radius-md);
+      border-radius: var(--r-xl);
       overflow: hidden;
-      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-hair);
+      box-shadow: var(--sh-lift);
+      flex-shrink: 0;
     }
 
-    /* Tick counter overlaid on top-left of canvas */
+    /* Tick counter overlaid on canvas */
     .canvas-hud {
       position: absolute;
       top: 10px; left: 10px;
       background: rgba(255,255,255,0.88);
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       padding: 3px 10px;
       font-family: 'JetBrains Mono', monospace;
       font-size: 11px;
       font-weight: 500;
-      color: var(--text-mid);
+      color: var(--ink-2);
       pointer-events: none;
       backdrop-filter: blur(4px);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--sh-sm);
     }
 
     /* Progress bar at canvas bottom edge */
@@ -549,16 +600,16 @@
 
     /* Loading state */
     .canvas-loading {
-      width: 640px;
-      height: 480px;
+      width: 700px;
+      height: 420px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 16px;
       background: var(--surface);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-md), 0 0 0 1px var(--border-hair);
+      border-radius: var(--r-xl);
+      box-shadow: var(--sh-lift);
     }
     .loading-label {
       font-family: 'Plus Jakarta Sans', sans-serif;
@@ -566,13 +617,13 @@
       font-weight: 600;
       letter-spacing: 0.10em;
       text-transform: uppercase;
-      color: var(--text-lo);
+      color: var(--ink-3);
     }
     .loading-dots { display: flex; gap: 7px; }
     .ld {
       width: 7px; height: 7px;
       border-radius: 50%;
-      background: var(--border-hair);
+      background: var(--hairline);
       animation: ldpulse 1.5s ease-in-out infinite;
     }
     .ld:nth-child(2) { animation-delay: 0.22s; }
@@ -585,14 +636,67 @@
       overflow-y: auto;
       overflow-x: hidden;
       background: var(--bg);
-      border-left: 1px solid var(--border-hair);
       display: flex;
       flex-direction: column;
       gap: 8px;
       padding: 10px 8px;
     }
 
-    /* ── KPI cards — Apple Health style ──────────────────────────────── */
+    /* ── KPI sparkline cards ─────────────────────────────────────────── */
+    .kpi-spark-card {
+      position: relative;
+      background: var(--surface);
+      border-radius: var(--r-md);
+      padding: 14px 16px 12px;
+      box-shadow: var(--sh-card);
+      overflow: hidden;
+      transition: box-shadow 0.15s;
+    }
+    .kpi-spark-card:hover { box-shadow: var(--sh-lift); }
+    .kpi-spark-card.is-danger { background: var(--danger-tint); }
+    .kpi-spark-canvas {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 54px;
+      opacity: 0.30;
+      pointer-events: none;
+    }
+    .kpi-spark-canvas canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .kpi-inner { position: relative; z-index: 1; }
+    .kpi-lbl {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.10em;
+      text-transform: uppercase;
+      color: var(--ink-3);
+      margin-bottom: 4px;
+    }
+    .kpi-val {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px;
+      font-weight: 500;
+      line-height: 1.1;
+      color: var(--ink);
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-val.good   { color: var(--ok); }
+    .kpi-val.warn   { color: var(--warn); }
+    .kpi-val.crit   { color: var(--danger); }
+    .kpi-val.accent { color: var(--accent); }
+    .kpi-val.dim    { color: var(--ink-3); }
+    .kpi-sub {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 11px;
+      color: var(--ink-3);
+      margin-top: 3px;
+    }
+
+    /* ── Classic 2×2 KPI grid (util cards) ─────────────────────────── */
     .kpi-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -600,33 +704,12 @@
     }
     .kpi-card {
       background: var(--surface);
-      border-radius: var(--radius-md);
+      border-radius: var(--r-md);
       padding: 12px 14px;
-      box-shadow: var(--shadow-md);
+      box-shadow: var(--sh-card);
       transition: box-shadow 0.15s;
     }
-    .kpi-card:hover { box-shadow: var(--shadow-lg); }
-    .kpi-val {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 26px;
-      font-weight: 500;
-      line-height: 1.1;
-      color: var(--text-hi);
-    }
-    .kpi-val.good   { color: var(--green); }
-    .kpi-val.warn   { color: var(--amber); }
-    .kpi-val.crit   { color: var(--coral); }
-    .kpi-val.accent { color: var(--accent); }
-    .kpi-val.dim    { color: var(--text-lo); }
-    .kpi-lbl {
-      font-family: 'IBM Plex Sans', sans-serif;
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--text-lo);
-      margin-top: 4px;
-    }
+    .kpi-card:hover { box-shadow: var(--sh-lift); }
 
     /* ── Active needs strip ──────────────────────────────────────────── */
     .needs-row {
@@ -636,18 +719,19 @@
     }
     .need-chip {
       background: var(--surface);
-      border-radius: var(--radius-sm);
-      box-shadow: var(--shadow-sm);
+      border-radius: var(--r-sm);
+      box-shadow: var(--sh-sm);
       padding: 8px 4px;
       text-align: center;
       transition: box-shadow 0.15s;
     }
-    .need-chip:hover { box-shadow: var(--shadow-md); }
+    .need-chip:hover { box-shadow: var(--sh-card); }
     .need-n {
       font-family: 'JetBrains Mono', monospace;
       font-size: 18px;
       font-weight: 500;
       line-height: 1.2;
+      font-variant-numeric: tabular-nums;
     }
     .need-t {
       font-family: 'IBM Plex Sans', sans-serif;
@@ -655,15 +739,15 @@
       font-weight: 500;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: var(--text-lo);
+      color: var(--ink-3);
       margin-top: 2px;
     }
 
     /* ── Chart wrapper cards ─────────────────────────────────────────── */
     .chart-card {
       background: var(--surface);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-md);
+      border-radius: var(--r-md);
+      box-shadow: var(--sh-card);
       padding: 14px 16px;
     }
     .chart-title {
@@ -672,7 +756,7 @@
       font-weight: 600;
       letter-spacing: 0.06em;
       text-transform: uppercase;
-      color: var(--text-mid);
+      color: var(--ink-2);
       margin-bottom: 10px;
     }
 
@@ -688,7 +772,7 @@
       gap: 7px;
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
-      color: var(--text-mid);
+      color: var(--ink-2);
     }
     .l-dot {
       width: 9px; height: 9px;
@@ -698,7 +782,7 @@
     .legend-note {
       grid-column: 1 / -1;
       font-size: 10px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       line-height: 1.6;
       margin-top: 6px;
     }
@@ -721,10 +805,10 @@
       width: min(860px, 96vw);
       max-height: 90vh;
       background: var(--surface);
-      border-radius: var(--radius-lg);
+      border-radius: var(--r-lg);
       display: flex;
       flex-direction: column;
-      box-shadow: var(--shadow-lg), 0 0 0 1px var(--border-hair);
+      box-shadow: var(--sh-lift);
       overflow: hidden;
     }
 
@@ -734,27 +818,27 @@
       align-items: center;
       justify-content: space-between;
       padding: 16px 20px;
-      border-bottom: 1px solid var(--border-hair);
-      background: var(--surface);
+      background: var(--surface-2);
     }
     .exp-title {
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 14px;
       font-weight: 700;
-      color: var(--text-hi);
+      color: var(--ink);
     }
     .exp-close {
       width: 28px; height: 28px;
-      border: 1.5px solid var(--border-hair);
-      border-radius: var(--radius-pill);
-      background: transparent;
-      color: var(--text-mid);
+      border-radius: var(--r-pill);
+      background: var(--surface);
+      box-shadow: var(--sh-sm);
+      color: var(--ink-2);
+      border: none;
       cursor: pointer;
       display: flex; align-items: center; justify-content: center;
       font-size: 14px;
-      transition: background 0.12s, color 0.12s;
+      transition: box-shadow 0.12s, color 0.12s;
     }
-    .exp-close:hover { background: var(--surface-sunk); color: var(--text-hi); }
+    .exp-close:hover { box-shadow: var(--sh-card); color: var(--ink); }
 
     .exp-body {
       flex: 1;
@@ -762,7 +846,6 @@
       padding: 20px;
     }
 
-    /* Progress area */
     .exp-prog-wrap {
       display: flex;
       flex-direction: column;
@@ -772,10 +855,9 @@
       padding: 32px 0;
     }
     .exp-prog-label {
-      font-family: 'IBM Plex Sans', sans-serif;
       font-size: 11px;
       font-weight: 500;
-      color: var(--text-lo);
+      color: var(--ink-3);
     }
     .exp-prog-status {
       font-family: 'JetBrains Mono', monospace;
@@ -787,14 +869,14 @@
       width: 100%;
       max-width: 480px;
       height: 6px;
-      background: var(--surface-sunk);
-      border-radius: var(--radius-pill);
+      background: var(--surface-2);
+      border-radius: var(--r-pill);
       overflow: hidden;
     }
     .exp-prog-fill {
       height: 100%;
-      background: linear-gradient(90deg, var(--accent), var(--green));
-      border-radius: var(--radius-pill);
+      background: linear-gradient(90deg, var(--accent), var(--ok));
+      border-radius: var(--r-pill);
       transition: width 0.2s linear;
     }
     .exp-prog-frac {
@@ -802,9 +884,9 @@
       font-size: 28px;
       font-weight: 500;
       color: var(--accent);
+      font-variant-numeric: tabular-nums;
     }
 
-    /* Results table */
     .exp-table-wrap { overflow-x: auto; }
     .exp-table {
       width: 100%;
@@ -818,18 +900,18 @@
       font-weight: 700;
       letter-spacing: 0.10em;
       text-transform: uppercase;
-      color: var(--text-lo);
+      color: var(--ink-3);
       padding: 8px 10px;
-      border-bottom: 1.5px solid var(--border-hair);
+      border-bottom: 1px solid var(--hairline);
       text-align: right;
       white-space: nowrap;
     }
     .exp-table th:first-child { text-align: left; }
     .exp-table td {
       padding: 8px 10px;
-      border-bottom: 1px solid var(--border-hair);
+      border-bottom: 1px solid var(--hairline);
       text-align: right;
-      color: var(--text-mid);
+      color: var(--ink-2);
       font-size: 11px;
       white-space: nowrap;
     }
@@ -837,28 +919,26 @@
       text-align: left;
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 12px;
-      color: var(--text-hi);
+      color: var(--ink);
     }
     .exp-table tr:last-child td { border-bottom: none; }
-    .exp-table tr:hover td { background: var(--surface-sunk); }
+    .exp-table tr:nth-child(even) td { background: var(--surface-2); }
+    .exp-table tr:hover td { background: var(--accent-tint); }
 
-    .exp-table .sig-yes { color: var(--green); }
-    .exp-table .sig-no  { color: var(--text-lo); }
-    .exp-table .stars   { color: var(--amber); font-family: 'IBM Plex Sans', sans-serif; }
-
-    /* Scenario column headers */
-    .exp-table .col-a { color: var(--accent); }
-    .exp-table .col-b { color: var(--green); }
+    .exp-table .sig-yes { color: var(--ok); }
+    .exp-table .sig-no  { color: var(--ink-3); }
+    .exp-table .stars   { color: var(--warn); font-family: 'IBM Plex Sans', sans-serif; }
+    .exp-table .col-a   { color: var(--accent); }
+    .exp-table .col-b   { color: var(--ok); }
 
     .exp-table-note {
       margin-top: 12px;
       font-family: 'IBM Plex Sans', sans-serif;
       font-size: 10px;
-      color: var(--text-lo);
+      color: var(--ink-3);
       line-height: 1.6;
     }
 
-    /* Footer */
     .exp-footer {
       flex-shrink: 0;
       display: flex;
@@ -866,22 +946,21 @@
       justify-content: flex-end;
       gap: 8px;
       padding: 14px 20px;
-      border-top: 1px solid var(--border-hair);
-      background: var(--surface-sunk);
+      background: var(--surface-2);
     }
     .btn-csv {
       height: 36px;
       padding: 0 18px;
-      border-radius: var(--radius-pill);
+      border-radius: var(--r-pill);
       font-family: 'Plus Jakarta Sans', sans-serif;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.06em;
       text-transform: uppercase;
       cursor: pointer;
-      border: 1.5px solid var(--green);
+      border: none;
       background: #DCFCE7;
-      color: var(--green);
+      color: var(--ok);
       transition: background 0.12s, box-shadow 0.12s;
     }
     .btn-csv:hover { background: #BBF7D0; box-shadow: 0 2px 8px rgba(63,126,90,0.20); }
@@ -894,12 +973,12 @@
       50%       { opacity: 0.35; }
     }
     @keyframes glow-pulse {
-      0%, 100% { box-shadow: 0 2px 8px rgba(13,148,136,0.18); }
-      50%       { box-shadow: 0 4px 20px rgba(13,148,136,0.42); }
+      0%, 100% { box-shadow: 0 2px 8px rgba(95,155,124,0.20); }
+      50%       { box-shadow: 0 4px 20px rgba(95,155,124,0.45); }
     }
     @keyframes ldpulse {
-      0%, 80%, 100% { background: var(--border-hair); transform: scale(1); }
-      40%            { background: var(--accent);      transform: scale(1.35); }
+      0%, 80%, 100% { background: var(--hairline); transform: scale(1); }
+      40%            { background: var(--accent);   transform: scale(1.35); }
     }
   </style>
 
@@ -927,12 +1006,21 @@
         ediCount:          2,
         tickDurationMs:    200,
 
+        /* Need spawn rates — sliders mutate CONFIG before each reset */
+        needRates: {
+          emergency:      0.00005,
+          medication:     0.002,
+          comfort:        0.005,
+          visitor_escort: 0.0015,
+        },
+
         /* Live KPIs */
         criticalIncidents: 0,
         nurseUtil:         0,
         robotUtil:         0,
         avgHealth:         100,
         lowestHealth:      100,
+        avgWaitSec:        0,
         activeNeeds:       { emergency: 0, medication: 0, comfort: 0, visitor_escort: 0 },
 
         /* Experiment state */
@@ -965,7 +1053,9 @@
           this.robotUtil         = 0;
           this.avgHealth         = 100;
           this.lowestHealth      = 100;
+          this.avgWaitSec        = 0;
           this.activeNeeds       = { emergency: 0, medication: 0, comfort: 0, visitor_escort: 0 };
+          window.dispatchEvent(new CustomEvent('sim-reset'));
           window.simScenarioMgr?.apply(this._cfg());
         },
 
@@ -974,8 +1064,8 @@
           window.simRenderer?.setSpeed(ms);
         },
 
-        /* ── Experiment actions ─────────────────────────────────────────── */
-        openExperiment() { this.expOpen = true; },
+        /* ── Experiment actions ─────────────────────────────────────── */
+        openExperiment()  { this.expOpen = true; },
         closeExperiment() { if (!this.expRunning) this.expOpen = false; },
 
         async startExperiment() {
@@ -989,9 +1079,6 @@
           exportCSV(this);
         },
 
-        /* ── Computed for experiment ───────────────────────────────────── */
-        get expProgressPct() { return this.expTotal > 0 ? (this.expProgress / this.expTotal) * 100 : 0; },
-
         /* ── Helpers ────────────────────────────────────────────────── */
         _cfg() {
           return {
@@ -1002,14 +1089,30 @@
             blankiCount:    this.blankiCount,
             ediCount:       this.ediCount,
             tickDurationMs: this.tickDurationMs,
+            needRates:      { ...this.needRates },
           };
         },
 
+        /* Format need rate for display: multiply by 1000, show 2dp, unit "/kt" */
+        fmtRate(v) {
+          return (v * 1000).toFixed(2);
+        },
+
         /* ── Computed ───────────────────────────────────────────────── */
-        get tickPadded()  { return String(this.currentTick).padStart(4, '0'); },
-        get progressPct() { return (this.currentTick / this.totalTicks) * 100; },
-        get ticksPerSec() { return Math.round(1000 / this.tickDurationMs); },
-        get isComplete()  { return this.rendererReady && this.currentTick >= this.totalTicks; },
+        get tickPadded()      { return String(this.currentTick).padStart(4, '0'); },
+        get progressPct()     { return (this.currentTick / this.totalTicks) * 100; },
+        get ticksPerSec()     { return Math.round(1000 / this.tickDurationMs); },
+        get isComplete()      { return this.rendererReady && this.currentTick >= this.totalTicks; },
+        get expProgressPct()  { return this.expTotal > 0 ? (this.expProgress / this.expTotal) * 100 : 0; },
+
+        /* Shift time: 08:00 start, each tick = 30 real seconds */
+        get shiftTime() {
+          const secs = 8 * 3600 + this.currentTick * 30;
+          const h = Math.floor(secs / 3600) % 24;
+          const m = Math.floor((secs % 3600) / 60);
+          return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+        },
+
         get statusLabel() {
           if (!this.rendererReady) return 'INIT';
           if (this.isComplete)     return 'DONE';
@@ -1017,14 +1120,17 @@
           return 'READY';
         },
         get statusClass() {
-          if (this.isRunning) return 'live';
+          if (this.isRunning)  return 'live';
           if (this.isComplete) return 'done';
           return 'init';
         },
-        get healthClass() {
+        get healthClass()  {
           return this.avgHealth > 66 ? 'good' : this.avgHealth > 33 ? 'warn' : 'crit';
         },
-        get critClass()   { return this.criticalIncidents > 0 ? 'crit' : 'good'; },
+        get critClass()    { return this.criticalIncidents > 0 ? 'crit' : 'good'; },
+        get waitClass()    {
+          return this.avgWaitSec < 30 ? 'good' : this.avgWaitSec < 120 ? 'warn' : 'crit';
+        },
       };
     }
   </script>
@@ -1041,15 +1147,18 @@
        ══════════════════════════════════════════════════════════════════════ -->
   <header class="hdr">
     <div class="hdr-brand">
-      <img src="assets/images/sutd-logo.jpg" class="hdr-logo" alt="Singapore University of Technology and Design"
-        onerror="this.style.display='none'" />
       <img src="assets/images/cgh-logo.png" class="hdr-logo" alt="Changi General Hospital"
         onerror="this.style.display='none'" />
-      <span class="hdr-name">CGH · SUTD</span>
+      <span class="hdr-name">Changi General Hospital</span>
       <span class="hdr-sep"></span>
-      <span class="hdr-sub">Adaptive Coordination of Multi-Robot Fleets in Smart Hospital Logistics</span>
+      <span class="hdr-sub">Ward Operations Simulator</span>
     </div>
-    <span class="hdr-right">40.015 Simulation Modelling and Analysis &nbsp;·&nbsp; Changi General Hospital</span>
+    <span class="hdr-right">
+      40.015 Simulation Modelling and Analysis &nbsp;·&nbsp;
+      <img src="assets/images/sutd-logo.jpg" class="hdr-logo hdr-logo-sutd" alt="SUTD"
+        style="display:inline-block;vertical-align:middle;margin-left:8px"
+        onerror="this.style.display='none'" />
+    </span>
   </header>
 
   <!-- ══════════════════════════════════════════════════════════════════════
@@ -1093,14 +1202,14 @@
         </div>
         <p class="scenario-hint">
           <span x-show="scenario === 'A'">
-            Scenario&nbsp;A — all patient needs are handled by nurses only.
+            Scenario&nbsp;A — all patient needs handled by nurses only.
           </span>
           <span x-show="scenario === 'B'">
             Scenario&nbsp;B — robots offload non-emergency tasks so nurses focus on emergencies.
           </span>
         </p>
       </div>
-      
+
       <!-- Playback card -->
       <div class="card">
         <div class="card-hdr">Playback</div>
@@ -1112,7 +1221,7 @@
           @click="isRunning ? doPause() : doPlay()"
           title="Play / Pause simulation"
         >
-          <span x-text="isRunning ? '⏸' : '▶'"></span>
+          <span x-text="isRunning ? '&#9646;&#9646;' : '&#9654;'"></span>
           <span x-text="isRunning ? 'PAUSE' : (isComplete ? 'COMPLETE' : 'PLAY')"></span>
         </button>
 
@@ -1122,13 +1231,86 @@
             :disabled="!rendererReady || isRunning || isComplete"
             @click="doStep()"
             title="Advance one tick"
-          >⏭&nbsp;STEP</button>
+          >&#9197;&nbsp;STEP</button>
           <button
             class="btn-sm"
             :disabled="!rendererReady"
             @click="doReset()"
             title="Reset simulation"
-          >↺&nbsp;RESET</button>
+          >&#8635;&nbsp;RESET</button>
+        </div>
+      </div>
+
+      <!-- Need Rates card -->
+      <div class="card">
+        <div class="card-hdr">Need Rates <span style="font-weight:400;font-family:'IBM Plex Sans',sans-serif;font-size:9px;letter-spacing:0">(per 1 000 ticks)</span></div>
+
+        <!-- Emergency -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:var(--c-emerg)"></span>
+              Emergency
+            </span>
+            <span class="f-val" x-text="fmtRate(needRates.emergency)"></span>
+          </div>
+          <input
+            type="range" class="slider c-red"
+            min="0" max="0.001" step="0.000005"
+            x-model.number="needRates.emergency"
+          />
+          <div class="slider-ends"><span>None</span><span>High</span></div>
+        </div>
+
+        <!-- Medication -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:var(--c-med)"></span>
+              Medication
+            </span>
+            <span class="f-val" x-text="fmtRate(needRates.medication)"></span>
+          </div>
+          <input
+            type="range" class="slider c-blue"
+            min="0" max="0.01" step="0.0001"
+            x-model.number="needRates.medication"
+          />
+          <div class="slider-ends"><span>None</span><span>High</span></div>
+        </div>
+
+        <!-- Comfort -->
+        <div class="slider-wrap">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:var(--c-comfort)"></span>
+              Comfort
+            </span>
+            <span class="f-val" x-text="fmtRate(needRates.comfort)"></span>
+          </div>
+          <input
+            type="range" class="slider c-amber"
+            min="0" max="0.02" step="0.0001"
+            x-model.number="needRates.comfort"
+          />
+          <div class="slider-ends"><span>None</span><span>High</span></div>
+        </div>
+
+        <!-- Visitor escort -->
+        <div class="slider-wrap" style="margin-bottom:0">
+          <div class="f-row" style="margin-bottom:0">
+            <span class="f-lbl">
+              <span class="swatch" style="background:var(--c-visitor)"></span>
+              Visitor escort
+            </span>
+            <span class="f-val" x-text="fmtRate(needRates.visitor_escort)"></span>
+          </div>
+          <input
+            type="range" class="slider c-purple"
+            min="0" max="0.01" step="0.0001"
+            x-model.number="needRates.visitor_escort"
+          />
+          <div class="slider-ends"><span>None</span><span>High</span></div>
         </div>
       </div>
 
@@ -1238,14 +1420,14 @@
       <!-- Experiment card -->
       <div class="card">
         <div class="card-hdr">Experiment</div>
-        <p style="font-size:11.5px;color:var(--text-lo);line-height:1.6;margin-bottom:12px">
+        <p style="font-size:11.5px;color:var(--ink-3);line-height:1.6;margin-bottom:12px">
           Run 30 replications of each scenario (seeds 1–30) and compare KPIs with Welch's t-test.
         </p>
         <button
           class="btn-exp"
           :disabled="!rendererReady"
           @click="openExperiment()"
-        >⚗ Run Experiment</button>
+        >&#9879; Run Experiment</button>
       </div>
 
       <!-- Bottom spacer -->
@@ -1256,6 +1438,29 @@
          CENTER — Simulation canvas
          ════════════════════════════════════════════ -->
     <section class="canvas-col">
+
+      <!-- Status strip — shown once renderer is ready -->
+      <div class="status-strip" x-show="rendererReady" x-cloak>
+        <div class="ss-group">
+          <span class="ss-label">Tick</span>
+          <span class="ss-val" x-text="currentTick + ' / ' + totalTicks"></span>
+        </div>
+        <span class="ss-dot">·</span>
+        <div class="ss-group">
+          <span class="ss-label">Shift</span>
+          <span class="ss-val" x-text="shiftTime"></span>
+        </div>
+        <span class="ss-dot">·</span>
+        <div class="ss-group">
+          <span class="ss-label">Speed</span>
+          <span class="ss-val" x-text="ticksPerSec + '×'"></span>
+        </div>
+        <div style="flex:1"></div>
+        <span class="status-pill" :class="statusClass">
+          <span class="s-dot"></span>
+          <span x-text="statusLabel"></span>
+        </span>
+      </div>
 
       <!-- Loading state while Renderer.init() resolves -->
       <div class="canvas-loading" x-show="!rendererReady" x-cloak>
@@ -1283,24 +1488,52 @@
          ════════════════════════════════════════════ -->
     <aside class="charts-col">
 
-      <!-- Live KPI cards — Apple Health style -->
+      <!-- ── KPI: Avg Wait Time ──────────────────────────────────────── -->
+      <div class="kpi-spark-card">
+        <div class="kpi-spark-canvas">
+          <canvas id="spark-wait"></canvas>
+        </div>
+        <div class="kpi-inner">
+          <div class="kpi-lbl">Avg Wait Time</div>
+          <div class="kpi-val" :class="waitClass" x-text="avgWaitSec.toFixed(1)"></div>
+          <div class="kpi-sub">seconds (unfulfilled needs)</div>
+        </div>
+      </div>
+
+      <!-- ── KPI: Patient Health ─────────────────────────────────────── -->
+      <div class="kpi-spark-card">
+        <div class="kpi-spark-canvas">
+          <canvas id="spark-health"></canvas>
+        </div>
+        <div class="kpi-inner">
+          <div class="kpi-lbl">Avg Patient Health</div>
+          <div class="kpi-val" :class="healthClass" x-text="avgHealth.toFixed(1)"></div>
+          <div class="kpi-sub">/ 100 &nbsp;·&nbsp; lowest <span x-text="lowestHealth.toFixed(1)"></span></div>
+        </div>
+      </div>
+
+      <!-- ── KPI: Critical Incidents ─────────────────────────────────── -->
+      <div class="kpi-spark-card" :class="{ 'is-danger': criticalIncidents > 0 }">
+        <div class="kpi-spark-canvas">
+          <canvas id="spark-crit"></canvas>
+        </div>
+        <div class="kpi-inner">
+          <div class="kpi-lbl">Critical Incidents</div>
+          <div class="kpi-val" :class="critClass" x-text="criticalIncidents"></div>
+          <div class="kpi-sub">health-zero events this run</div>
+        </div>
+      </div>
+
+      <!-- ── Utilisation mini-cards ──────────────────────────────────── -->
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-val" :class="critClass" x-text="criticalIncidents"></div>
-          <div class="kpi-lbl">Critical Incidents</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-val" :class="healthClass" x-text="avgHealth.toFixed(1)"></div>
-          <div class="kpi-lbl">Avg Patient Health</div>
-        </div>
-        <div class="kpi-card">
           <div class="kpi-val good" x-text="(nurseUtil * 100).toFixed(0) + '%'"></div>
-          <div class="kpi-lbl">Nurse Utilisation</div>
+          <div class="kpi-lbl" style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-top:4px">Nurse Util.</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-val" :class="scenario === 'B' ? 'accent' : 'dim'"
             x-text="scenario === 'B' ? (robotUtil * 100).toFixed(0) + '%' : '—'"></div>
-          <div class="kpi-lbl">Robot Utilisation</div>
+          <div class="kpi-lbl" style="font-family:'IBM Plex Sans',sans-serif;font-size:10px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-top:4px">Robot Util.</div>
         </div>
       </div>
 
@@ -1337,7 +1570,7 @@
 
       <!-- Need queue chart -->
       <div class="chart-card">
-        <div class="chart-title">Need Queue</div>
+        <div class="chart-title">Active Need Queue</div>
         <div style="height:110px;position:relative">
           <canvas id="needs-chart"></canvas>
         </div>
@@ -1348,7 +1581,7 @@
         <div class="chart-title">Legend</div>
         <div class="legend-grid">
           <div class="legend-item">
-            <span class="l-dot" style="background:#fff;border:1.5px solid var(--border-hair)"></span>Patient
+            <span class="l-dot" style="background:#fff;outline:1.5px solid var(--hairline)"></span>Patient
           </div>
           <div class="legend-item">
             <span class="l-dot" style="background:var(--c-nurse)"></span>Nurse
@@ -1395,8 +1628,8 @@
 
       <!-- Header -->
       <div class="exp-header">
-        <span class="exp-title">⚗ Batch Experiment — Scenario A vs B</span>
-        <button class="exp-close" :disabled="expRunning" @click="closeExperiment()">✕</button>
+        <span class="exp-title">Batch Experiment — Scenario A vs B</span>
+        <button class="exp-close" :disabled="expRunning" @click="closeExperiment()">&#10005;</button>
       </div>
 
       <!-- Body -->
@@ -1406,16 +1639,16 @@
         <template x-if="!expRunning && !expDone">
           <div style="padding:24px 0;text-align:center">
             <p
-              style="color:var(--text-mid);font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.7;margin-bottom:20px">
+              style="color:var(--ink-2);font-family:'IBM Plex Sans',sans-serif;font-size:13px;line-height:1.7;margin-bottom:20px">
               Runs <strong style="color:var(--accent)">30 replications</strong> of Scenario A (nurses only)
-              and <strong style="color:var(--green)">30 replications</strong> of Scenario B (nurses + robots),
-              then compares each KPI using <strong style="color:var(--text-hi)">Welch's t-test</strong>.
+              and <strong style="color:var(--ok)">30 replications</strong> of Scenario B (nurses + robots),
+              then compares each KPI using <strong style="color:var(--ink)">Welch's t-test</strong>.
             </p>
             <button
               class="btn-play"
               style="display:inline-flex;width:auto;padding:0 28px"
               @click="startExperiment()"
-            >▶ &nbsp;START EXPERIMENT</button>
+            >&#9654; &nbsp;START EXPERIMENT</button>
           </div>
         </template>
 
@@ -1434,7 +1667,7 @@
         <!-- ── Done state: results table ───────────────────────────────── -->
         <template x-if="expDone && expResults">
           <div>
-            <p style="font-family:'IBM Plex Sans',sans-serif;font-size:11px;color:var(--text-lo);margin-bottom:14px"
+            <p style="font-family:'IBM Plex Sans',sans-serif;font-size:11px;color:var(--ink-3);margin-bottom:14px"
               x-text="expStatus"></p>
 
             <div class="exp-table-wrap">
@@ -1446,7 +1679,7 @@
                     <th class="col-a">A&nbsp;95%&nbsp;CI</th>
                     <th class="col-b">B&nbsp;Mean</th>
                     <th class="col-b">B&nbsp;95%&nbsp;CI</th>
-                    <th>Δ (B−A)</th>
+                    <th>&#916; (B&#8722;A)</th>
                     <th>p&nbsp;value</th>
                     <th>Sig.</th>
                   </tr>
@@ -1456,13 +1689,13 @@
                     <tr>
                       <td x-text="r.label"></td>
                       <td x-text="r.dA.mean.toFixed(2) + (r.unit ? ' ' + r.unit : '')"></td>
-                      <td style="color:var(--text-lo);font-size:10px"
+                      <td style="color:var(--ink-3);font-size:10px"
                           x-text="'[' + r.dA.ciLow.toFixed(2) + ', ' + r.dA.ciHigh.toFixed(2) + ']'"></td>
                       <td x-text="r.dB.mean.toFixed(2) + (r.unit ? ' ' + r.unit : '')"></td>
-                      <td style="color:var(--text-lo);font-size:10px"
+                      <td style="color:var(--ink-3);font-size:10px"
                           x-text="'[' + r.dB.ciLow.toFixed(2) + ', ' + r.dB.ciHigh.toFixed(2) + ']'"></td>
                       <td
-                        :style="(r.dB.mean - r.dA.mean) < 0 ? 'color:var(--green)' : (r.dB.mean - r.dA.mean) > 0 ? 'color:var(--amber)' : ''"
+                        :style="(r.dB.mean - r.dA.mean) < 0 ? 'color:var(--ok)' : (r.dB.mean - r.dA.mean) > 0 ? 'color:var(--warn)' : ''"
                         x-text="(r.dB.mean - r.dA.mean >= 0 ? '+' : '') + (r.dB.mean - r.dA.mean).toFixed(2)"
                       ></td>
                       <td x-text="r.test.p < 0.0001 ? '<0.0001' : r.test.p.toFixed(4)"></td>
@@ -1489,11 +1722,11 @@
       <!-- Footer -->
       <div class="exp-footer">
         <template x-if="expDone">
-          <button class="btn-csv" @click="downloadCSV()">⬇ Export CSV</button>
+          <button class="btn-csv" @click="downloadCSV()">&#11015; Export CSV</button>
         </template>
         <template x-if="expDone">
           <button class="btn-exp" style="width:auto;padding:0 16px" @click="startExperiment()">
-            ↺ Re-run
+            &#8635; Re-run
           </button>
         </template>
         <button class="btn-sm" :disabled="expRunning" @click="closeExperiment()"
