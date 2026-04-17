@@ -151,7 +151,6 @@ export const CONFIG = {
     medi:          'assets/sprites/medi.png',
     blanki:        'assets/sprites/blanki.png',
     edi:           'assets/sprites/edi.png',
-    bed:           'assets/sprites/bed.png',
     nurse_station: 'assets/sprites/nurse_station.png',
     charging_bay:  'assets/sprites/charging_bay.png',
     entrance:      'assets/sprites/entrance.png',

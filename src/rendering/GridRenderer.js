@@ -15,9 +15,9 @@ const CELL_COLORS = {
   'E': 0xDBEAFE,  // ENTRANCE — blue-100 sky
 };
 
-/** Map grid cell symbols to SPRITES config keys */
+/** Map grid cell symbols to SPRITES config keys. Bed cells are skipped — the
+ *  patient sprite is drawn on top and includes the bed as a single entity. */
 const CELL_SPRITE_KEY = {
-  'B': 'bed',
   'N': 'nurse_station',
   'C': 'charging_bay',
   'E': 'entrance',
