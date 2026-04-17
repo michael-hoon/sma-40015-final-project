@@ -64,9 +64,9 @@ export const CONFIG = {
 
   // ── Patient needs — spawn probability per tick (checked independently) ──────
   NEED_SPAWN_RATE: {
-    emergency: 0.00005,
-    medication: 0.002,
-    comfort: 0.005,
+    emergency: 0.000075,
+    medication: 0.005,
+    comfort: 0.001,
     visitor_escort: 0.0015, //0.0015,
   },
 
@@ -87,23 +87,23 @@ export const CONFIG = {
     visitor_escort: 0.05,
   },
   /** Health gained when a need is fulfilled */
-  HEALTH_RECOVERY_PER_NEED: 25,
+  HEALTH_RECOVERY_PER_NEED: 20,
   HEALTH_MAX: 100,
   /** Health reset value after a critical incident (health reaching 0) */
-  HEALTH_CRITICAL_RESET: 50,
+  HEALTH_CRITICAL_RESET: 25,
 
   // ── Service times [min, max] in ticks ───────────────────────────────────────
   SERVICE_TIME: {
     nurse: {
-      emergency:      [8, 12],
-      medication:     [4, 6],
-      comfort:        [2, 3],
-      visitor_escort: [3, 5],
+      emergency:      [20, 40],
+      medication:     [6, 10],
+      comfort:        [1, 3],
+      visitor_escort: [3, 6],
     },
     robot: {
-      medication:     [3, 4],   // MEDi
-      comfort:        [1, 2],   // BLANKi
-      visitor_escort: [2, 3],   // EDi (escort portion only)
+      medication:     [12, 16],   // MEDi
+      comfort:        [5, 6],   // BLANKi
+      visitor_escort: [6, 10],   // EDi (escort portion only)
     },
   },
 
@@ -127,22 +127,22 @@ export const CONFIG = {
 
   // ── Refilling station times ──────────────────────────────────────────────────
   /** Ticks required to restock one medicine vial at the refilling station */
-  REFILL_TIME_PER_MEDICINE: 1,
+  REFILL_TIME_PER_MEDICINE: 4,
   /** Ticks required to restock one blanket at the refilling station */
   REFILL_TIME_PER_BLANKET: 1,
 
   // ── Robot battery ───────────────────────────────────────────────────────────
   BATTERY_MAX: 100,
   /** Battery drain per tick while the robot is moving */
-  BATTERY_DRAIN_MOVING: 0.5,
+  BATTERY_DRAIN_MOVING: 0.1,
   /** Battery drain per tick while the robot is serving */
-  BATTERY_DRAIN_SERVING: 0.1,
+  BATTERY_DRAIN_SERVING: 0.01,
   /** Battery drain per tick while the robot is idle */
-  BATTERY_DRAIN_IDLE: 0.1,
+  BATTERY_DRAIN_IDLE: 0.01,
   /** Battery level that triggers a move-to-charger transition */
   BATTERY_LOW_THRESHOLD: 20,
   /** Battery gained per tick while charging */
-  BATTERY_CHARGE_RATE: 2.0,
+  BATTERY_CHARGE_RATE: 0.25,
 
   // ── Experiment ──────────────────────────────────────────────────────────────
   REPLICATION_COUNT: 30,
