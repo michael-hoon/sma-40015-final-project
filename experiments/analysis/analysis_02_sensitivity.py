@@ -92,7 +92,8 @@ def waittime_facet(factorial: pd.DataFrame) -> sns.axisgrid.FacetGrid:
     g = sns.catplot(
         data=melted, kind='box',
         x='fleet_total', y='value', col='NURSE_COUNT', row='KPI',
-        sharey=False, height=3, aspect=1.3, palette='mako_r',
+        sharey=False, height=3, aspect=1.3,
+        hue='fleet_total', palette='mako_r', legend=False,
     )
     g.set_titles('Nurses={col_name} · {row_name}')
     g.set_axis_labels('Total robot fleet size', 'Wait time (ticks)')

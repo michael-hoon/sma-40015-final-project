@@ -56,7 +56,7 @@ def descriptive_figure(base_a: pd.DataFrame, base_b: pd.DataFrame) -> plt.Figure
         ])
         sns.boxplot(
             data=combined, x='scenario', y=kpi, ax=ax_box,
-            palette=['#3F7E5A', '#0D9488'],
+            hue='scenario', palette=['#3F7E5A', '#0D9488'], legend=False,
         )
         ax_box.set_title(KPI_LABELS[kpi], fontsize=10)
         ax_box.set_xlabel('')
