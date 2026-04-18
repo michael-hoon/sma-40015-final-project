@@ -64,10 +64,10 @@ export const CONFIG = {
 
   // ── Patient needs — spawn probability per tick (checked independently) ──────
   NEED_SPAWN_RATE: {
-    emergency: 0.000075,
-    medication: 0.005,
-    comfort: 0.001,
-    visitor_escort: 0.0015, //0.0015,
+    emergency: 0.00015, // 6+ emergencies per 8-hour run on average
+    medication: 0.0025, // 2+ medication needs per patient per 8-hour run on average
+    comfort: 0.0035, // 3+ comfort needs per patient per 8-hour run on average
+    visitor_escort: 0.001, // ~1 visitor escort need per patient per 8-hour run on average
   },
 
   // ── Need urgency weights (used in nurse scoring formula) ────────────────────
@@ -87,7 +87,7 @@ export const CONFIG = {
     visitor_escort: 0.05,
   },
   /** Health gained when a need is fulfilled */
-  HEALTH_RECOVERY_PER_NEED: 20,
+  HEALTH_RECOVERY_PER_NEED: 15,
   HEALTH_MAX: 100,
   /** Health reset value after a critical incident (health reaching 0) */
   HEALTH_CRITICAL_RESET: 25,
@@ -101,7 +101,7 @@ export const CONFIG = {
       visitor_escort: [3, 6],
     },
     robot: {
-      medication:     [12, 16],   // MEDi
+      medication:     [14, 18],   // MEDi
       comfort:        [5, 6],   // BLANKi
       visitor_escort: [6, 10],   // EDi (escort portion only)
     },
@@ -132,9 +132,9 @@ export const CONFIG = {
   REFILL_TIME_PER_BLANKET: 1,
 
   // ── Robot battery ───────────────────────────────────────────────────────────
-  BATTERY_MAX: 100,
+  BATTERY_MAX: 80,
   /** Battery drain per tick while the robot is moving */
-  BATTERY_DRAIN_MOVING: 0.1,
+  BATTERY_DRAIN_MOVING: 0.25,
   /** Battery drain per tick while the robot is serving */
   BATTERY_DRAIN_SERVING: 0.01,
   /** Battery drain per tick while the robot is idle */
@@ -142,7 +142,7 @@ export const CONFIG = {
   /** Battery level that triggers a move-to-charger transition */
   BATTERY_LOW_THRESHOLD: 20,
   /** Battery gained per tick while charging */
-  BATTERY_CHARGE_RATE: 0.25,
+  BATTERY_CHARGE_RATE: 0.5,
 
   // ── Experiment ──────────────────────────────────────────────────────────────
   REPLICATION_COUNT: 30,
