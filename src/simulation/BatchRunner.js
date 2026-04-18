@@ -16,13 +16,18 @@ export default class BatchRunner {
    * so results match the spec's experiment design (seeds 1–30).
    *
    * @param {'A'|'B'} scenario - 'A' = nurses only, 'B' = nurses + robots
-   * @param {number}  [count=30] - Number of replications
+   * @param {number}  [count=30]
    * @param {(done: number, total: number) => void} [onProgress]
-   * @param {object}  [configOverrides] - Optional CONFIG field overrides
-   * @returns {Promise<object[]>} Array of per-replication KPI summary objects
+   * @param {object}  [configOverrides]
+   * @param {object}  [opts]
+   * @param {boolean} [opts.includeTickHistory=false] - When true, each result also carries a `tickHistory` array
+   * @returns {Promise<object[]>} Array of per-replication summary objects. If
+   *   `opts.includeTickHistory` is true, each element also has a `tickHistory`
+   *   field with the full per-tick snapshot array.
    */
-  async run(scenario, count = 30, onProgress, configOverrides = {}) {
+  async run(scenario, count = 30, onProgress, configOverrides = {}, opts = {}) {
     const cfg = Object.assign({}, CONFIG, configOverrides);
+    const { includeTickHistory = false } = opts;
     const results = [];
 
     for (let i = 0; i < count; i++) {
@@ -34,13 +39,15 @@ export default class BatchRunner {
         includeRobots: scenario === 'B',
       });
 
-      // Run the full simulation length (TICKS_PER_RUN ticks, WARM_UP_TICKS discarded internally)
       sched.run();
-      results.push(sched.getStats());
+      const summary = sched.getStats();
+      if (includeTickHistory) {
+        summary.tickHistory = sched.getTickHistory();
+      }
+      summary._seed = seed;
+      results.push(summary);
 
       onProgress?.(i + 1, count);
-
-      // Yield to the event loop — lets Alpine update the progress bar
       await new Promise(resolve => setTimeout(resolve, 0));
     }
 
