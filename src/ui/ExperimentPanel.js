@@ -135,3 +135,49 @@ export function exportCSV(comp) {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Drive the full 118-cell × 30-rep sweep from the UI.
+ *
+ * Updates Alpine state fields:
+ *   sweepRunning {boolean}
+ *   sweepDone {boolean}
+ *   sweepCell {number}   — 1-indexed
+ *   sweepTotalCells {number}
+ *   sweepRep {number}    — 1-indexed within current cell
+ *   sweepCellId {string}
+ *   sweepStatus {string}
+ *
+ * @param {object} comp - Alpine reactive data proxy
+ * @param {object} [opts]
+ * @param {number} [opts.repsPerCell=30]
+ * @returns {Promise<void>}
+ */
+export async function runFullSweep(comp, { repsPerCell = 30 } = {}) {
+  const { runSweep } = await import('../analysis/ExperimentRunner.js');
+
+  comp.sweepRunning    = true;
+  comp.sweepDone       = false;
+  comp.sweepCell       = 0;
+  comp.sweepTotalCells = 0;
+  comp.sweepRep        = 0;
+  comp.sweepCellId     = '';
+  comp.sweepStatus     = 'Starting sweep…';
+
+  try {
+    await runSweep({
+      repsPerCell,
+      onProgress: ({ cell, totalCells, rep, cellId }) => {
+        comp.sweepCell       = cell;
+        comp.sweepTotalCells = totalCells;
+        comp.sweepRep        = rep;
+        comp.sweepCellId     = cellId;
+        comp.sweepStatus     = `Cell ${cell}/${totalCells} (${cellId}) — rep ${rep}/${repsPerCell}`;
+      },
+    });
+    comp.sweepStatus = `Sweep complete — ${comp.sweepTotalCells} cells × ${repsPerCell} reps downloaded.`;
+    comp.sweepDone   = true;
+  } finally {
+    comp.sweepRunning = false;
+  }
+}

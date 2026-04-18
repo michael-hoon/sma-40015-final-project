@@ -946,6 +946,15 @@
         _expRawA:    null,
         _expRawB:    null,
 
+        /* Full-sweep state */
+        sweepRunning:    false,
+        sweepDone:       false,
+        sweepCell:       0,
+        sweepTotalCells: 0,
+        sweepRep:        0,
+        sweepCellId:     '',
+        sweepStatus:     '',
+
         /* ── Lifecycle ──────────────────────────────────────────────── */
         async init() {
           const { initControlPanel } = await import('./src/ui/ControlPanel.js');
@@ -982,6 +991,12 @@
           if (this.expRunning) return;
           const { runExperiment } = await import('./src/ui/ExperimentPanel.js');
           await runExperiment(this);
+        },
+
+        async startFullSweep() {
+          if (this.sweepRunning) return;
+          const { runFullSweep } = await import('./src/ui/ExperimentPanel.js');
+          await runFullSweep(this);
         },
 
         async downloadCSV() {
@@ -1243,9 +1258,27 @@
         </p>
         <button
           class="btn-exp"
-          :disabled="!rendererReady"
+          :disabled="!rendererReady || sweepRunning"
           @click="openExperiment()"
         >⚗ Run Experiment</button>
+
+        <p style="font-size:11.5px;color:var(--text-lo);line-height:1.6;margin:16px 0 12px 0">
+          Full factorial+OAT sweep — 118 cells × 30 reps = 3,540 runs. Emits <code>runs.csv</code>, <code>manifest.json</code>, <code>tick_history.csv</code>.
+        </p>
+        <button
+          class="btn-exp"
+          :disabled="!rendererReady || expRunning || sweepRunning"
+          @click="startFullSweep()"
+        >🧪 Run Full Sweep</button>
+
+        <template x-if="sweepRunning || sweepDone">
+          <div style="margin-top:10px;font-size:11.5px;color:var(--text-mid);line-height:1.5">
+            <div x-text="sweepStatus"></div>
+            <div x-show="sweepTotalCells > 0" style="margin-top:4px;height:4px;background:var(--surface-sunk);border-radius:2px;overflow:hidden">
+              <div :style="'height:100%;background:var(--accent);width:' + (sweepTotalCells ? (100 * sweepCell / sweepTotalCells) : 0) + '%'"></div>
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- Bottom spacer -->
