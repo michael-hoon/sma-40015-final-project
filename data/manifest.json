@@ -1,7 +1,7 @@
 {
-  "sweepId": "sweep_2026-04-18T13-50-32-242Z",
-  "startedAt": "2026-04-18T13:50:32.244Z",
-  "finishedAt": "2026-04-18T14:05:25.887Z",
+  "sweepId": "sweep_2026-04-18T14-26-55-888Z",
+  "startedAt": "2026-04-18T14:26:55.889Z",
+  "finishedAt": "2026-04-18T14:39:15.377Z",
   "totalCells": 118,
   "repsPerCell": 30,
   "totalRuns": 3540,
@@ -11,10 +11,10 @@
     "WARM_UP_TICKS": 50,
     "RANDOM_SEED_START": 1,
     "NEED_SPAWN_RATE": {
-      "emergency": 0.000075,
-      "medication": 0.005,
-      "comfort": 0.001,
-      "visitor_escort": 0.0015
+      "emergency": 0.00015,
+      "medication": 0.0025,
+      "comfort": 0.0035,
+      "visitor_escort": 0.001
     },
     "URGENCY_WEIGHT": {
       "emergency": 10,
@@ -49,8 +49,8 @@
       },
       "robot": {
         "medication": [
-          12,
-          16
+          14,
+          18
         ],
         "comfort": [
           5,
@@ -395,5 +395,5 @@
       "#"
     ]
   ],
-  "gitHash": "c155a7afe645a1aad8acfbfa613ca691a2f8b49b"
+  "gitHash": "b88d8c5ccbecb0b4363e8b792f081f5ef0be8f89"
 }

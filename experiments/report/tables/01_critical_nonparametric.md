@@ -1,3 +1,6 @@
-Zero-inflation: A = 0%, B = 7%
+Zero-inflation: A = 10%, B = 67%
 
-(Neither scenario is heavily zero-inflated — paired t is adequate.)
+Because zero-inflation exceeds 50%, we also report Mann-Whitney U:
+
+- U = 803.5
+- p = 0.0000
