@@ -136,9 +136,9 @@ export const CONFIG = {
   /** Battery drain per tick while the robot is moving */
   BATTERY_DRAIN_MOVING: 0.25,
   /** Battery drain per tick while the robot is serving */
-  BATTERY_DRAIN_SERVING: 0.01,
+  BATTERY_DRAIN_SERVING: 0.1,
   /** Battery drain per tick while the robot is idle */
-  BATTERY_DRAIN_IDLE: 0.01,
+  BATTERY_DRAIN_IDLE: 0.1,
   /** Battery level that triggers a move-to-charger transition */
   BATTERY_LOW_THRESHOLD: 20,
   /** Battery gained per tick while charging */
