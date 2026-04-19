@@ -6,11 +6,22 @@ An agent-based simulation comparing nurse-only versus nurse-plus-robot staffing 
 
 ---
 
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| [`MODEL_DOCUMENTATION.md`](MODEL_DOCUMENTATION.md) | Model description for the course submission — agent rules, state diagrams, assumptions |
+| [`docs/SIMULATION_SPEC.md`](docs/SIMULATION_SPEC.md) | Implementation-level specification (tick order, config, rendering contract) |
+| [`experiments/report/OUTPUT_ANALYSIS.md`](experiments/report/OUTPUT_ANALYSIS.md) | Results and statistical analysis of the 3,540-run factorial + OAT sweep |
+| [`experiments/analysis/README.md`](experiments/analysis/README.md) | How to reproduce the figures and tables in `OUTPUT_ANALYSIS.md` |
+
+---
+
 ## Background
 
 In July 2023, Changi General Hospital deployed three autonomous mobile robots — **MEDi** (medication transport), **BLANKi** (comfort items), and **EDi** (visitor escort) — in its Emergency Department as part of its broader 80+ robot fleet. The core hypothesis is that robots offloading non-clinical tasks free nurses to focus on emergencies, reducing critical incidents and improving response times.
 
-This simulation tests that hypothesis by running a discrete-event ABM of a 48-bed ward under two conditions: **Scenario A** (nurses only) and **Scenario B** (same nurses plus a configurable robot fleet). Patient outcomes are compared across 30 statistically independent replications using Welch's t-test.
+This simulation tests that hypothesis by running a discrete-time ABM of a 48-bed ward under two conditions: **Scenario A** (nurses only) and **Scenario B** (same nurses plus a configurable robot fleet). Patient outcomes are compared across 30 statistically independent replications using Welch's t-test.
 
 ---
 
@@ -42,9 +53,10 @@ No npm, no build step, no installation. All libraries load from CDN on first ope
 | **Reset** | Restart from tick 0 with the current scenario, seed, and staffing settings. |
 | **Speed slider** | Controls how fast ticks fire visually (50 ms = fast, 1000 ms = slow). Has no effect on headless batch runs. |
 | **Nurses slider** | Number of nurse agents (1–8). |
-| **MEDi / BLANKi / EDi sliders** | Fleet size for each robot type (0–6 each). Only visible in Scenario B. |
+| **MEDi / BLANKi / EDi sliders** | Fleet size for each robot type (0–6 each). Only active in Scenario B. |
 | **Seed input** | Integer seed for the PRNG. Two runs with the same seed and settings are identical. |
-| **Run Experiment** | Opens the batch experiment modal (see below). |
+| **Run Experiment** | Opens the batch experiment modal — 30 reps of Scenario A vs 30 reps of Scenario B at current staffing. |
+| **Run Full Sweep** | Launches the full factorial + OAT sweep (3,540 runs, ~25 min). Writes `data/runs.csv`, `data/manifest.json` and `data/tick_history.csv`. |
 
 The tick counter in the top-left of the panel shows the current tick (`0000`–`0960`) and a progress bar. The status pill shows **INIT** (renderer loading), **READY** (paused), **LIVE** (running), or **DONE** (run complete).
 
@@ -73,9 +85,9 @@ The canvas renders a 20 × 15 ward grid. Each tick represents **30 seconds** of 
 | Orange | BLANKi robot |
 | Purple | EDi robot |
 
-**Health bar** — the bar above each patient runs from green (healthy) through amber to red. When a patient's health reaches 0 a critical incident is logged and health resets to 50.
+**Health bar** — the bar above each patient runs from green (healthy) through amber to red. When a patient's health reaches 0 a critical incident is logged and health resets to 25.
 
-**Battery bar** — the bar below each robot shows charge level. When it drops below 20% the robot abandons its current task and navigates to the nearest charging bay.
+**Battery bar** — the bar below each robot shows charge level (0 to `BATTERY_MAX = 80`). When it drops below `BATTERY_LOW_THRESHOLD = 20` the robot abandons its current task and navigates to the nearest charging bay.
 
 **Need dots** — small coloured dots below each patient indicate active unmet needs: red = emergency, blue = medication, orange = comfort, purple = visitor escort. A dot with a ring is open (unclaimed); a dimmed dot is already claimed by an agent en route.
 
@@ -90,9 +102,10 @@ The canvas renders a 20 × 15 ward grid. Each tick represents **30 seconds** of 
 
 ## Batch Experiments
 
-Click **Run Experiment** in the left panel to open the experiment modal.
+### In-browser: Run Experiment
 
-Pressing **Start Experiment** runs:
+Click **Run Experiment** in the left panel. This runs:
+
 1. 30 headless replications of Scenario A (seeds 1–30)
 2. 30 headless replications of Scenario B (seeds 1–30)
 
@@ -109,9 +122,39 @@ When finished the modal displays a results table with one row per KPI:
 | **p value** | Exact two-tailed p-value from Welch's t-test |
 | **Sig.** | Stars: `***` p < 0.001 · `**` p < 0.01 · `*` p < 0.05 · `†` p < 0.10 · `ns` otherwise |
 
-Click **Export CSV** to download `cgh_abm_experiment_results.csv` with the full results table. Click **Re-run** to repeat the experiment.
+Click **Export CSV** to download `cgh_abm_experiment_results.csv` with the full results table.
 
 > The warm-up period (first 50 ticks) is automatically discarded from all per-replication statistics, so the comparison reflects steady-state operation only.
+
+### Full factorial sweep: Run Full Sweep
+
+The **Run Full Sweep** button (and the equivalent Node harness `experiments/run_sweep.mjs`) runs a 3,540-run factorial + one-at-a-time (OAT) design: 108 factorial cells (NURSE_COUNT × MEDI_COUNT × BLANKI_COUNT × EDI_COUNT) and 10 OAT cells (medication and emergency demand sweeps) × 30 replications each. This takes roughly 20–30 minutes on a modern laptop and writes to `data/`:
+
+- `runs.csv` — 3,540 rows, one per replication, with aggregated KPIs
+- `tick_history.csv` — per-tick history for the baseline-B cell (30 reps × 960 ticks)
+- `manifest.json` — sweep metadata plus the git commit hash for reproducibility
+
+The Node harness is the recommended path for the full sweep — Chrome throttles concurrent downloads and occasionally drops output files silently.
+
+```bash
+node experiments/run_sweep.mjs
+```
+
+### Output analysis (Python)
+
+The statistical analysis that produced the figures and tables in `experiments/report/OUTPUT_ANALYSIS.md` lives in `experiments/analysis/`. To reproduce:
+
+```bash
+# One-time setup
+python -m venv .venv
+source .venv/bin/activate
+pip install -r experiments/analysis/requirements.txt
+
+# Run all four analysis sections (or individually — see experiments/analysis/README.md)
+python experiments/analysis/run_all.py
+```
+
+This reads from `data/runs.csv`, `data/tick_history.csv` and `data/manifest.json`, and writes figures (300 DPI PNG) to `experiments/report/figures/` and Markdown tables to `experiments/report/tables/`. See [`experiments/analysis/README.md`](experiments/analysis/README.md) for per-script detail and [`experiments/report/OUTPUT_ANALYSIS.md`](experiments/report/OUTPUT_ANALYSIS.md) for the full write-up.
 
 ---
 
@@ -121,6 +164,9 @@ Click **Export CSV** to download `cgh_abm_experiment_results.csv` with the full 
 sma-40015-final-project/
 │
 ├── index.html                     # Single-page app — Alpine component, CSS, CDN scripts
+├── MODEL_DOCUMENTATION.md         # Model description for the course submission
+├── README.md                      # This file
+│
 ├── src/
 │   ├── config.js                  # All tunable parameters (single source of truth)
 │   │
@@ -133,10 +179,10 @@ sma-40015-final-project/
 │   │   ├── Nurse.js               # Urgency-weighted scoring and decision-making
 │   │   ├── RobotMEDi.js           # Medication transport robot with battery mechanics
 │   │   ├── RobotBLANKi.js         # Comfort-items robot with battery mechanics
-│   │   ├── RobotEDi.js            # Visitor escort robot (instant hand-off; no accompanying phase)
+│   │   ├── RobotEDi.js            # Visitor escort robot (instant hand-off at bed)
 │   │   ├── SeededRandom.js        # Linear congruential PRNG (reproducible runs)
 │   │   ├── Stats.js               # Per-tick KPI collection and replication summary
-│   │   └── BatchRunner.js         # Headless 30-replication runner for experiments
+│   │   └── BatchRunner.js         # Headless multi-replication runner
 │   │
 │   ├── rendering/                 # Pixi.js visual layer — observes simulation, never modifies it
 │   │   ├── Renderer.js            # Pixi app init, animation frame loop, tick throttling
@@ -150,15 +196,39 @@ sma-40015-final-project/
 │   │   ├── ScenarioManager.js     # Translates UI settings into Renderer.reset() calls
 │   │   └── ExperimentPanel.js     # runExperiment() and exportCSV() for batch comparison
 │   │
-│   └── analysis/
+│   └── analysis/                  # Experiment design and result shaping (JS side)
+│       ├── designGrid.js          # 108-cell factorial + 10-cell OAT design generator
+│       ├── ExperimentRunner.js    # Orchestrates the in-browser full sweep
+│       ├── flattenResult.js       # Converts per-replication stats → CSV rows
 │       └── Statistics.js          # descriptive(), welchTest(), sigStars() — pure functions
 │
 ├── docs/
-│   └── SIMULATION_SPEC.md         # Authoritative simulation specification
+│   ├── SIMULATION_SPEC.md         # Authoritative simulation specification
+│   └── screenshot.png
+│
+├── experiments/
+│   ├── run_sweep.mjs              # Node harness for the full 3,540-run sweep
+│   ├── analysis/                  # Python output-analysis scripts (figures + tables)
+│   │   ├── analysis_01_types.py       # Descriptive / comparative / non-parametric
+│   │   ├── analysis_02_sensitivity.py # Main effects, interactions, OAT curves
+│   │   ├── analysis_03_steady_state.py# Welch's graphical warm-up assessment
+│   │   ├── analysis_04_accuracy.py    # Sample-mean precision, running means
+│   │   ├── run_all.py                 # Runs all four in order
+│   │   ├── requirements.txt
+│   │   └── README.md
+│   └── report/
+│       ├── OUTPUT_ANALYSIS.md     # Full statistical write-up
+│       ├── figures/               # 300 DPI PNGs produced by the analysis scripts
+│       └── tables/                # Markdown tables produced by the analysis scripts
+│
+├── data/                          # Sweep outputs (git-ignored apart from the committed baseline)
+│   ├── runs.csv
+│   ├── tick_history.csv
+│   └── manifest.json
 │
 └── test/
     ├── smoke-test.js              # Quick sanity check — one replication, prints KPIs
-    └── verify-phase1.js           # 46 behavioural invariant tests for the simulation engine
+    └── verify-phase1.js           # Behavioural invariant tests for the simulation engine
 ```
 
 ---
@@ -170,7 +240,7 @@ sma-40015-final-project/
 Each tick runs these eight steps in strict order — reordering them would introduce race conditions:
 
 1. **Need generation** — each patient independently rolls for each need type
-2. **Robot decisions** — idle robots scan the NeedQueue and claim the nearest matching need (robots cannot see emergency needs)
+2. **Robot decisions** — idle robots scan the NeedQueue and claim the nearest matching need (robots never claim emergencies)
 3. **Nurse decisions** — idle nurses score unclaimed needs by `urgency × wait_time / distance` and claim the highest scorer
 4. **Movement** — all agents in a MOVING state advance one cell along their BFS path
 5. **Task execution** — agents at their target decrement remaining service time
@@ -184,15 +254,15 @@ Robots decide before nurses (step 2 before step 3) so that in Scenario B, robots
 
 | Agent | Moves | Handles | Special behaviour |
 |-------|-------|---------|-------------------|
-| **Patient** | No | — | Generates needs, tracks health (0–100), logs critical incident at health = 0 |
-| **Nurse** | Yes | All need types including emergencies | Scores needs by urgency × wait / distance |
-| **MEDi** | Yes | Medication only | Abandons task and goes to charge when battery < 20 |
-| **BLANKi** | Yes | Comfort only | Same battery mechanics |
+| **Patient** | No | — | Generates needs, tracks health (0–100), logs critical incident at health = 0 (health resets to 25) |
+| **Nurse** | Yes | All need types including emergencies | Scores needs by urgency × wait / distance; 2-item inventory split demand-proportionally on refill |
+| **MEDi** | Yes | Medication only | Nearest-need rule; 4-vial capacity; abandons task and charges when battery < 20 |
+| **BLANKi** | Yes | Comfort only | Nearest-need rule; 15-blanket capacity; same battery mechanics |
 | **EDi** | Yes | Visitor escort only | Travels to entrance first, then to bed; instant hand-off at bed (no service countdown) — released to IDLE immediately |
 
 ### Core Constraint
 
-**Emergencies can only be handled by nurses.** The NeedQueue filters emergency needs out of every robot's query. This is the mechanism by which robots add value — they absorb the non-critical workload so nurse capacity is preserved for life-threatening situations.
+**Emergencies can only be handled by nurses.** Each robot class queries the NeedQueue only for the need type(s) it serves; medication/comfort/visitor-escort are the only types any robot will ever see. This is the mechanism by which robots add value — they absorb the non-critical workload so nurse capacity is preserved for life-threatening situations.
 
 ### KPIs Measured
 
@@ -207,7 +277,7 @@ Collected per replication over ticks 50–960 (warm-up discarded):
 | Mean nurse utilisation | Fraction of ticks nurses were busy |
 | Mean robot utilisation | Fraction of ticks robots were active (not idle or charging) |
 
-Full specification in [`docs/SIMULATION_SPEC.md`](docs/SIMULATION_SPEC.md).
+Full agent rules, state diagrams and assumptions are in [`MODEL_DOCUMENTATION.md`](MODEL_DOCUMENTATION.md). Implementation-level detail and the rendering contract are in [`docs/SIMULATION_SPEC.md`](docs/SIMULATION_SPEC.md).
 
 ---
 
@@ -220,8 +290,9 @@ Full specification in [`docs/SIMULATION_SPEC.md`](docs/SIMULATION_SPEC.md).
 | UI reactivity | [Alpine.js](https://alpinejs.dev) v3 | Declarative control panel bindings |
 | Styling | [Tailwind CSS](https://tailwindcss.com) CDN | Utility classes, no build step |
 | Simulation engine | Vanilla JS ES modules | Custom tick scheduler, BFS pathfinding, seeded PRNG |
+| Output analysis | Python 3 + pandas / scipy / matplotlib | Driven by scripts in `experiments/analysis/` |
 
-Everything loads from cdn.jsdelivr.net via `<script>` tags. There is no package.json, no node_modules, no bundler.
+Everything on the browser side loads from cdn.jsdelivr.net via `<script>` tags. There is no package.json, no node_modules, no bundler. The Python pipeline is only needed to regenerate the output-analysis figures and tables.
 
 ---
 
@@ -242,15 +313,15 @@ WARM_UP_TICKS:  50,  // first 50 ticks discarded from statistics
 
 // Need spawn rates (probability per patient per tick)
 NEED_SPAWN_RATE: {
-  emergency:      0.00005, // rare but critical
-  medication:     0.002,
-  comfort:        0.005,
-  visitor_escort: 0.0015,
+  emergency:      0.00015,  // rare but critical
+  medication:     0.0025,
+  comfort:        0.0035,
+  visitor_escort: 0.001,
 },
 
 // Health drain per tick per active unfulfilled need
 HEALTH_DRAIN_PER_TICK: {
-  emergency:     1.0,     // patient deteriorates quickly
+  emergency:     1.0,       // patient deteriorates quickly
   medication:    0.3,
   comfort:       0.1,
   visitor_escort: 0.05,
